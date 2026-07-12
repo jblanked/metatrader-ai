@@ -1,3 +1,6 @@
+#ifndef __TESTERCACHE__
+#define __TESTERCACHE__
+
 #include "TestCacheHeader.mqh"
 #include "ExpTradeSummary.mqh"
 #include "TestCacheInput.mqh"
@@ -359,3 +362,5 @@ public:
     return(Size);
   }
 };
+
+#endif // __TESTERCACHE__
