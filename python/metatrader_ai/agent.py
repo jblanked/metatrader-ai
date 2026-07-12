@@ -5,7 +5,7 @@ from typing import Optional
 import requests
 
 from .tools import dispatch, mt5
-from .llm import DEEPSEEK, LLM
+from .llm import DEEPSEEK, LLM, LOCAL
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -27,7 +27,7 @@ class Agent:
         api_key: str,
         model: int = DEEPSEEK,
     ):
-        if not api_key or len(api_key) < 3:
+        if (not api_key or len(api_key) < 3) and model != LOCAL:
             raise ValueError("No API key set.")
         
         self.llm = LLM( model)
