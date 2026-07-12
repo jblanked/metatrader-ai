@@ -30,11 +30,14 @@ class Agent:
         if (not api_key or len(api_key) < 3) and model != LOCAL:
             raise ValueError("No API key set.")
         
-        self.llm = LLM( model)
-        self.headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
+        self.llm = LLM(model)
+        self.api_key = api_key
+        self.headers = {"Content-Type": "application/json"}
+        if self.llm.id == "anthropic":
+            self.headers["x-api-key"] = api_key
+            self.headers["anthropic-version"] = "2023-06-01"
+        elif self.llm.id != "local":
+            self.headers["Authorization"] = f"Bearer {api_key}"
 
         self.metatrader_client = mt5.MT5(
             account_login,
