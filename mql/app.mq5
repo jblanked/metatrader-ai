@@ -1516,6 +1516,10 @@ void AIPanel::OnTickUpdate()
          PopulateInfoTab();
       }
    }
+   else if(m_isChatTab && m_initialized)
+   {
+      ChartRedraw();
+   }
 }
 
 //+------------------------------------------------------------------+
