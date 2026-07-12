@@ -1,3 +1,6 @@
+#ifndef __JB_BACKTEST_MQH__
+#define __JB_BACKTEST_MQH__
+
 //+------------------------------------------------------------------+
 //|                                                  JB-Backtest.mqh |
 //|                                     Copyright 2024-2026,JBlanked |
@@ -778,3 +781,5 @@ string            CBacktest::timeframeSuffix(const ENUM_TIMEFRAMES timeframe)
    return StringSubstr(timeframeEdit, StringLen(timeframeEdit) - 3, StringLen(timeframeEdit) - 1);
 }
 //+------------------------------------------------------------------+
+
+#endif // __JB_BACKTEST_MQH__
