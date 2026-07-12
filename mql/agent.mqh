@@ -51,7 +51,11 @@ Agent::Agent(string apiKey, const ENUM_LLM_PROVIDER providerId, const int provid
    m_llm             = LLM(providerId, providerModel);
    m_apiKey          = apiKey;
    m_initialized     = initialize();
-   m_headers         = "Content-Type: application/json\r\nAuthorization: Bearer " + m_apiKey;
+   m_headers = "Content-Type: application/json\r\n";
+   if(m_llm.id == "anthropic")
+      m_headers += "x-api-key: " + m_apiKey + "\r\nanthropic-version: 2023-06-01";
+   else if(m_llm.id != "local")
+      m_headers += "Authorization: Bearer " + m_apiKey;
    m_deferredImageMsg = "";
 #ifdef __MQL4__
    if(!FolderCreate("metatrader-ai", FILE_COMMON)) Print("Failed to create metatrader-ai folder");
