@@ -19,7 +19,7 @@
 class Agent
 {
 public:
-   Agent(string apiKey, const ENUM_LLM_PROVIDER providerId = LLM_PROVIDER_DEEPSEEK, const int providerModel = DEEPSEEK_MODEL_V4_FLASH);  // Constructor
+   Agent(string apiKey, const ENUM_LLM_PROVIDER providerId = LLM_PROVIDER_DEEPSEEK, const int providerModel = LLM_MODEL_DEEPSEEK_V4_FLASH);  // Constructor
    ~Agent();                  // Deconstructor
    void reset();              // Clear conversation history while preserving the system message
    string run(string prompt); // Process one user turn and return the assistant's final text response

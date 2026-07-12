@@ -153,7 +153,7 @@ void OnStart()
    Agent *agent = new Agent(
       "your-api-key",               // API key
       LLM_PROVIDER_DEEPSEEK,        // provider (default)
-      DEEPSEEK_MODEL_V4_FLASH       // model (default)
+      LLM_MODEL_DEEPSEEK_V4_FLASH   // model (default)
    );
    string response = agent.run("What is the daily high of ETHUSD?");
    Print("[Agent] ", response);
