@@ -28,10 +28,11 @@ enum ENUM_LLM_MODEL
    LLM_MODEL_ANTHROPIC_SONNET_4_6 = 7,  // claude-sonnet-4-6
    LLM_MODEL_ANTHROPIC_SONNET_5   = 8,  // claude-sonnet-5
    LLM_MODEL_ANTHROPIC_OPUS_4_8   = 9,  // claude-opus-4-8
-   LLM_MODEL_ANTHROPIC_FABLE_5    = 10, // claude-fable-5
-   LLM_MODEL_ANTHROPIC_HAIKU_4_5  = 11, // claude-haiku-4-5-20251001
-   LLM_MODEL_DEEPSEEK_V4_FLASH    = 12, // deepseek-v4-flash
-   LLM_MODEL_DEEPSEEK_V4_PRO      = 13, // deepseek-v4-pro
+   LLM_MODEL_ANTHROPIC_OPUS_5     = 10, // claude-opus-5
+   LLM_MODEL_ANTHROPIC_FABLE_5    = 11, // claude-fable-5
+   LLM_MODEL_ANTHROPIC_HAIKU_4_5  = 12, // claude-haiku-4-5-20251001
+   LLM_MODEL_DEEPSEEK_V4_FLASH    = 13, // deepseek-v4-flash
+   LLM_MODEL_DEEPSEEK_V4_PRO      = 14, // deepseek-v4-pro
 };
 
 //+------------------------------------------------------------------+
@@ -107,6 +108,9 @@ LLM::LLM(const ENUM_LLM_PROVIDER providerId, const int providerModel)
       break;
    case LLM_MODEL_ANTHROPIC_OPUS_4_8:
       model = "claude-opus-4-8";
+      break;
+   case LLM_MODEL_ANTHROPIC_OPUS_5:
+      model = "claude-opus-5";
       break;
    case LLM_MODEL_ANTHROPIC_FABLE_5:
       model = "claude-fable-5";
