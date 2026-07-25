@@ -46,10 +46,10 @@ public:
    string model;
    string url;
 
-   LLM(const ENUM_LLM_PROVIDER providerId = LLM_PROVIDER_DEEPSEEK, const int providerModel = LLM_MODEL_DEEPSEEK_V4_FLASH);
+   LLM(const ENUM_LLM_PROVIDER providerId = LLM_PROVIDER_DEEPSEEK, const int providerModel = LLM_MODEL_DEEPSEEK_V4_FLASH, const string localUrl = "http://127.0.0.1:8080/v1/chat/completions");
 };
 //+------------------------------------------------------------------+
-LLM::LLM(const ENUM_LLM_PROVIDER providerId, const int providerModel)
+LLM::LLM(const ENUM_LLM_PROVIDER providerId, const int providerModel, const string localUrl)
 {
    switch(providerId)
    {
@@ -71,7 +71,7 @@ LLM::LLM(const ENUM_LLM_PROVIDER providerId, const int providerModel)
    case LLM_PROVIDER_LOCAL:
       id    = "local";
       label = "Local";
-      url   = "http://127.0.0.1:8080/v1/chat/completions";
+      url   = localUrl;
       break;
    default:
       Alert("Invalid provider_id. Must be 0 (OpenAI), 1 (DeepSeek), 2 (Anthropic) or 3 (Local).");
