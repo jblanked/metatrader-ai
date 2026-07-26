@@ -33,6 +33,12 @@ enum ENUM_LLM_MODEL
    LLM_MODEL_ANTHROPIC_HAIKU_4_5  = 12, // claude-haiku-4-5-20251001
    LLM_MODEL_DEEPSEEK_V4_FLASH    = 13, // deepseek-v4-flash
    LLM_MODEL_DEEPSEEK_V4_PRO      = 14, // deepseek-v4-pro
+   LLM_MODEL_LOCAL_NONE           = 15, // local (no model)
+   LLM_MODEL_LOCAL_QWEN3_5_9B     = 16, // qwen3.5:9b (local)
+   LLM_MODEL_LOCAL_QWEN3_5_4B     = 17, // qwen3.5:4b (local)
+   LLM_MODEL_LOCAL_QWEN3_5_2B     = 18, // qwen3.5:2b (local)
+   LLM_MODEL_LOCAL_LLAMA3_2_3B    = 19, // llama3.2:3b (local)
+   LLM_MODEL_LOCAL_LLAMA3_2_1B    = 20, // llama3.2:1b (local)
 };
 
 //+------------------------------------------------------------------+
@@ -123,6 +129,24 @@ LLM::LLM(const ENUM_LLM_PROVIDER providerId, const int providerModel, const stri
       break;
    case LLM_MODEL_DEEPSEEK_V4_PRO:
       model = "deepseek-v4-pro";
+      break;
+   case LLM_MODEL_LOCAL_NONE:
+      model = "";
+      break;
+   case LLM_MODEL_LOCAL_QWEN3_5_9B:
+      model = "qwen3.5:9b";
+      break;
+   case LLM_MODEL_LOCAL_QWEN3_5_4B:
+      model = "qwen3.5:4b";
+      break;
+   case LLM_MODEL_LOCAL_QWEN3_5_2B:
+      model = "qwen3.5:2b";
+      break;
+   case LLM_MODEL_LOCAL_LLAMA3_2_3B:
+      model = "llama3.2:3b";
+      break;
+   case LLM_MODEL_LOCAL_LLAMA3_2_1B:
+      model = "llama3.2:1b";
       break;
    default:
       model = "";
