@@ -12,7 +12,8 @@ enum ENUM_LLM_PROVIDER
    LLM_PROVIDER_OPENAI    = 0, // OpenAI
    LLM_PROVIDER_DEEPSEEK  = 1, // DeepSeek
    LLM_PROVIDER_ANTHROPIC = 2, // Anthropic
-   LLM_PROVIDER_LOCAL     = 3  // Local
+   LLM_PROVIDER_LOCAL     = 3, // Local
+   LLM_PROVIDER_XAI       = 4  // xAI
 };
 
 enum ENUM_LLM_MODEL
@@ -39,6 +40,10 @@ enum ENUM_LLM_MODEL
    LLM_MODEL_LOCAL_QWEN3_5_2B     = 18, // qwen3.5:2b (local)
    LLM_MODEL_LOCAL_LLAMA3_2_3B    = 19, // llama3.2:3b (local)
    LLM_MODEL_LOCAL_LLAMA3_2_1B    = 20, // llama3.2:1b (local)
+   LLM_MODEL_XAI_GROK_4_5         = 21, // grok-4.5 (xAI)
+   LLM_MODEL_XAI_GROK_4_3         = 22, // grok-4.3 (xAI)
+   LLM_MODEL_XAI_GROK_4_20        = 23, // grok-4.20 (xAI)
+   LLM_MODEL_XAI_GROK_BUILD_0_1   = 24, // grok-build-0.1 (xAI)
 };
 
 //+------------------------------------------------------------------+
@@ -79,8 +84,13 @@ LLM::LLM(const ENUM_LLM_PROVIDER providerId, const int providerModel, const stri
       label = "Local";
       url   = localUrl;
       break;
+   case LLM_PROVIDER_XAI:
+      id    = "xai";
+      label = "xAI";
+      url   = "https://api.x.ai/v1";
+      break;
    default:
-      Alert("Invalid provider_id. Must be 0 (OpenAI), 1 (DeepSeek), 2 (Anthropic) or 3 (Local).");
+      Alert("Invalid provider_id. Must be 0 (OpenAI), 1 (DeepSeek), 2 (Anthropic), 3 (Local), or 4 (xAI).");
       return;
    }
    switch(providerModel)
@@ -147,6 +157,18 @@ LLM::LLM(const ENUM_LLM_PROVIDER providerId, const int providerModel, const stri
       break;
    case LLM_MODEL_LOCAL_LLAMA3_2_1B:
       model = "llama3.2:1b";
+      break;
+   case LLM_MODEL_XAI_GROK_4_5:
+      model = "grok-4.5";
+      break;
+   case LLM_MODEL_XAI_GROK_4_3:
+      model = "grok-4.3";
+      break;
+   case LLM_MODEL_XAI_GROK_4_20:
+      model = "grok-4.20";
+      break;
+   case LLM_MODEL_XAI_GROK_BUILD_0_1:
+      model = "grok-build-0.1";
       break;
    default:
       model = "";
