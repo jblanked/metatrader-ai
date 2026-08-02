@@ -72,7 +72,7 @@ LLM::LLM(const ENUM_LLM_PROVIDER providerId, const int providerModel, const stri
    case LLM_PROVIDER_ANTHROPIC:
       id    = "anthropic";
       label = "Anthropic";
-      url   = "https://api.anthropic.com/v1/messages";
+      url   = "https://api.anthropic.com/v1/chat/completions"; 
       break;
    case LLM_PROVIDER_LOCAL:
       id    = "local";

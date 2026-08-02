@@ -5,18 +5,19 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026,JBlanked LLC"
 #property link      "https://www.jblanked.com"
-#property version   "1.06"
+#property version   "1.07"
 #property description "MetaTrader-AI: AI trading assistant for MetaTrader 5"
-#property description "Last updated: July 11th, 2026"
+#property description "Last updated: August 2nd, 2026"
 #property strict
 
 #include "agent.mqh"
 #include "tools/Panel-Draw.mqh"
 #include <VirtualKeys.mqh>
 
-input string inpApiKey              = "sk--";                      // Your API Key
-input ENUM_LLM_PROVIDER inpProvider = LLM_PROVIDER_DEEPSEEK;       // LLM Provider
-input ENUM_LLM_MODEL    inpModel    = LLM_MODEL_DEEPSEEK_V4_FLASH; // LLM Model
+input string            inpApiKey   = "sk--";                                      // Your API Key
+input ENUM_LLM_PROVIDER inpProvider = LLM_PROVIDER_DEEPSEEK;                       // LLM Provider
+input ENUM_LLM_MODEL    inpModel    = LLM_MODEL_DEEPSEEK_V4_FLASH;                 // LLM Model
+input string            inpLocalUrl = "http://127.0.0.1:8080/v1/chat/completions"; // Local LLM URL
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
 //+------------------------------------------------------------------+
@@ -33,7 +34,7 @@ int OnInit()
       Sleep(1);
    }
 
-   agent = new Agent(inpApiKey, inpProvider, inpModel);
+   agent = new Agent(inpApiKey, inpProvider, inpModel, inpLocalUrl);
 
    int panelW = (int)(ChartGetInteger(0, CHART_WIDTH_IN_PIXELS) / 2.5);
    int panelH = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS) - 40;
