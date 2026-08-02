@@ -19,7 +19,12 @@
 class Agent
 {
 public:
-   Agent(string apiKey, const ENUM_LLM_PROVIDER providerId = LLM_PROVIDER_DEEPSEEK, const int providerModel = LLM_MODEL_DEEPSEEK_V4_FLASH);  // Constructor
+   Agent(
+      string apiKey, 
+      const ENUM_LLM_PROVIDER providerId = LLM_PROVIDER_DEEPSEEK, 
+      const int providerModel = LLM_MODEL_DEEPSEEK_V4_FLASH,
+      const string localUrl = "http://127.0.0.1:8080/v1/chat/completions"
+   );  // Constructor
    ~Agent();                  // Deconstructor
    void reset();              // Clear conversation history while preserving the system message
    string run(string prompt); // Process one user turn and return the assistant's final text response
@@ -44,11 +49,11 @@ private:
 //+------------------------------------------------------------------+
 //| Constructor                                                      |
 //+------------------------------------------------------------------+
-Agent::Agent(string apiKey, const ENUM_LLM_PROVIDER providerId, const int providerModel)
+Agent::Agent(string apiKey, const ENUM_LLM_PROVIDER providerId, const int providerModel, const string localUrl)
 {
    m_messages.m_type = jtARRAY;
    m_dispatch        = new Dispatch();
-   m_llm             = LLM(providerId, providerModel);
+   m_llm             = LLM(providerId, providerModel, localUrl);
    m_apiKey          = apiKey;
    m_initialized     = initialize();
    m_headers = "Content-Type: application/json\r\n";
