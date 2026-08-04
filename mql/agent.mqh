@@ -23,7 +23,8 @@ public:
       string apiKey, 
       const ENUM_LLM_PROVIDER providerId = LLM_PROVIDER_DEEPSEEK, 
       const int providerModel = LLM_MODEL_DEEPSEEK_V4_FLASH,
-      const string localUrl = "http://127.0.0.1:8080/v1/chat/completions"
+      const string localUrl = "http://127.0.0.1:8080/v1/chat/completions",
+      const ENUM_LLM_THINKING thinking = LLM_THINKING_MEDIUM
    );  // Constructor
    ~Agent();                  // Deconstructor
    void reset();              // Clear conversation history while preserving the system message
@@ -44,16 +45,17 @@ private:
    void pushRaw(string serialized);                             // Append a pre-serialized JSON object (used for assistant messages with tool_calls)
    void pushToolResult(string toolCallId, string content);      // Append a tool result message
    void pushToolResultImage(string toolCallId, string b64data); // Append a tool result image
+   void setThinking(CJAVal& payload);                           // Set the "thinking" parameter in the payload 
 };
 
 //+------------------------------------------------------------------+
 //| Constructor                                                      |
 //+------------------------------------------------------------------+
-Agent::Agent(string apiKey, const ENUM_LLM_PROVIDER providerId, const int providerModel, const string localUrl)
+Agent::Agent(string apiKey, const ENUM_LLM_PROVIDER providerId, const int providerModel, const string localUrl, const ENUM_LLM_THINKING thinking)
 {
    m_messages.m_type = jtARRAY;
    m_dispatch        = new Dispatch();
-   m_llm             = LLM(providerId, providerModel, localUrl);
+   m_llm             = LLM(providerId, providerModel, localUrl, thinking);
    m_apiKey          = apiKey;
    m_initialized     = initialize();
    m_headers = "Content-Type: application/json\r\n";
@@ -179,6 +181,7 @@ string Agent::run(string prompt)
       payload["tool_choice"] = "auto";
       payload["messages"].Set(m_messages);
       payload["tools"].Set(toolList);
+      setThinking(payload);
 
       string jsonString = requestPost(m_llm.url, m_headers, payload);
       if(jsonString == "")
@@ -264,6 +267,60 @@ void Agent::reset()
       CJAVal systemMsg;
       systemMsg.Deserialize(systemMsgStr);
       m_messages.Add(systemMsg);
+   }
+}
+
+//+------------------------------------------------------------------+
+//| et the "thinking" parameter in the payload                       |
+//+------------------------------------------------------------------+
+void Agent::setThinking(CJAVal& payload)
+{
+   if(m_llm.thinking != "none")
+   {
+      if(m_llm.id == "deepseek")
+      {
+         CJAVal thinking;
+         thinking["type"] = "enabled";
+         payload["thinking"].Set(thinking);
+         payload["reasoning_effort"] = m_llm.thinking;
+      }
+      else if(m_llm.id == "local")
+      {
+         payload["think"] = true;
+      }
+      else if(m_llm.id == "openai" || m_llm.id == "gemini")
+      {
+         payload["reasoning_effort"] = m_llm.thinking;
+      }
+      else if(m_llm.id == "anthropic")
+      {
+         CJAVal thinking;
+         thinking["type"] = "enabled";
+         payload["thinking"].Set(thinking);
+      }
+   }
+   else
+   {
+      if(m_llm.id == "deepseek")
+      {
+         CJAVal thinking;
+         thinking["type"] = "disabled";
+         payload["thinking"].Set(thinking);
+      }
+      else if(m_llm.id == "local")
+      {
+         payload["think"] = false;
+      }
+      else if(m_llm.id == "openai" || m_llm.id == "gemini")
+      {
+         payload["reasoning_effort"] = m_llm.thinking;
+      }
+      else if(m_llm.id == "anthropic")
+      {
+         CJAVal thinking;
+         thinking["type"] = "disabled";
+         payload["thinking"].Set(thinking);
+      }
    }
 }
 //+------------------------------------------------------------------+

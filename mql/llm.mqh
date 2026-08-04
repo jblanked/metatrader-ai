@@ -46,6 +46,15 @@ enum ENUM_LLM_MODEL
    LLM_MODEL_XAI_GROK_BUILD_0_1   = 24, // grok-build-0.1 (xAI)
 };
 
+enum ENUM_LLM_THINKING
+{
+   LLM_THINKING_NONE   = 0, // none
+   LLM_THINKING_LOW    = 1, // low
+   LLM_THINKING_MEDIUM = 2, // medium
+   LLM_THINKING_HIGH   = 3, // high
+   LLM_THINKING_MAX    = 4  // max
+};
+
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
@@ -55,12 +64,17 @@ public:
    string id;
    string label;
    string model;
+   string thinking;
    string url;
 
-   LLM(const ENUM_LLM_PROVIDER providerId = LLM_PROVIDER_DEEPSEEK, const int providerModel = LLM_MODEL_DEEPSEEK_V4_FLASH, const string localUrl = "http://127.0.0.1:8080/v1/chat/completions");
+   LLM(const ENUM_LLM_PROVIDER providerId = LLM_PROVIDER_DEEPSEEK, 
+      const int providerModel = LLM_MODEL_DEEPSEEK_V4_FLASH, 
+      const string localUrl = "http://127.0.0.1:8080/v1/chat/completions",
+      const ENUM_LLM_THINKING thinking = LLM_THINKING_MEDIUM
+   );
 };
 //+------------------------------------------------------------------+
-LLM::LLM(const ENUM_LLM_PROVIDER providerId, const int providerModel, const string localUrl)
+LLM::LLM(const ENUM_LLM_PROVIDER providerId, const int providerModel, const string localUrl, const ENUM_LLM_THINKING thinkingChoice)
 {
    switch(providerId)
    {
@@ -172,6 +186,27 @@ LLM::LLM(const ENUM_LLM_PROVIDER providerId, const int providerModel, const stri
       break;
    default:
       model = "";
+      break;
+   };
+   switch(thinkingChoice)
+   {
+   case LLM_THINKING_NONE:
+      this.thinking = "none";
+      break;
+   case LLM_THINKING_LOW:
+      this.thinking = "low";
+      break;
+   case LLM_THINKING_MEDIUM:
+      this.thinking = "medium";
+      break;
+   case LLM_THINKING_HIGH:
+      this.thinking = "high";
+      break;
+   case LLM_THINKING_MAX:
+      this.thinking = "max";
+      break;
+   default:
+      this.thinking = "none";
       break;
    };
 }
