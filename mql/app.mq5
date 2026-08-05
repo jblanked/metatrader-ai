@@ -18,6 +18,7 @@ input string            inpApiKey   = "sk--";                                   
 input ENUM_LLM_PROVIDER inpProvider = LLM_PROVIDER_DEEPSEEK;                       // LLM Provider
 input ENUM_LLM_MODEL    inpModel    = LLM_MODEL_DEEPSEEK_V4_FLASH;                 // LLM Model
 input string            inpLocalUrl = "http://127.0.0.1:8080/v1/chat/completions"; // Local LLM URL
+input ENUM_LLM_THINKING inpThinking = LLM_THINKING_MEDIUM;                         // LLM Thinking Level
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
 //+------------------------------------------------------------------+
@@ -34,7 +35,7 @@ int OnInit()
       Sleep(1);
    }
 
-   agent = new Agent(inpApiKey, inpProvider, inpModel, inpLocalUrl);
+   agent = new Agent(inpApiKey, inpProvider, inpModel, inpLocalUrl, inpThinking);
 
    int panelW = (int)(ChartGetInteger(0, CHART_WIDTH_IN_PIXELS) / 2.5);
    int panelH = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS) - 40;
