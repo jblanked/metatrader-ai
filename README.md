@@ -1,5 +1,9 @@
 # MetaTrader AI
-An AI-powered trading assistant for MetaTrader 4 and MetaTrader 5! Now you can use AI in your trading strategies.
+An AI-powered trading assistant for MetaTrader 4 and MetaTrader 5! Now you can use AI in your trading strategies. Watch the video below for a quick overview of the features and capabilities of MetaTrader AI.
+
+<a href="http://www.youtube.com/watch?feature=player_embedded&v=xGR-dZTS1P0" target="_blank">
+ <img src="http://img.youtube.com/vi/xGR-dZTS1P0/default.jpg" alt="Watch the video" width="240" height="180" border="1" />
+</a> 
 
 ## Features
 
