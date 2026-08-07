@@ -488,8 +488,7 @@ string Agent::runSubAgent(string prompt)
       return "Sub-agent failed: ChartOpen error " + (string)GetLastError() + ".";
    }
 
-   MqlParam prms[];
-   ArrayResize(prms, 6);
+   MqlParam prms[6];
    prms[0].type          = TYPE_STRING;
    prms[0].string_value  = SUBAGENT_EXE_FOLDER + id + ".ex5";
    prms[1].type          = TYPE_STRING;
@@ -516,7 +515,7 @@ string Agent::runSubAgent(string prompt)
    ArrayResize(m_pendingSubAgents, pendingCount + 1);
    m_pendingSubAgents[pendingCount] = id;
 
-   Print("[Agent] Launched sub-agent ", id, " on chart ", chartId);
+   PrintFormat("[Agent] Launched sub-agent %s on chart %d", id, chartId);
 
    // Return session id
    return id;
