@@ -71,7 +71,7 @@ Session::~Session()
 //+------------------------------------------------------------------+
 bool Session::load(string filename)
 {
-   const string fullPath = StringFormat("%s\\%s.json", SESSION_FOLDER, filename);
+   const string fullPath = StringFormat("%s%s\\%s.json", FILE_COMMON_FOLDER, SESSION_FOLDER, filename);
    const string content = fileRead(fullPath);
    if (content == "") return false;
    CJAVal json;
@@ -103,7 +103,7 @@ bool Session::save()
    json["lastAccessed"] = lastAccessed;
    json["messages"].Set(messages);
 
-   const string fullPath = StringFormat("%s\\%s.json", SESSION_FOLDER, name);
+   const string fullPath = StringFormat("%s%s\\%s.json", FILE_COMMON_FOLDER, SESSION_FOLDER, name);
    const string content = json.ToStr();
    char data[];
    StringToCharArray(content, data);
