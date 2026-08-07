@@ -24,14 +24,14 @@
 class Agent
 {
 public:
-                     Agent(
+   Agent(
       string apiKey,
       const ENUM_LLM_PROVIDER providerId = LLM_PROVIDER_DEEPSEEK,
       const ENUM_LLM_MODEL providerModel = LLM_MODEL_DEEPSEEK_V4_FLASH,
       const string localUrl = "http://127.0.0.1:8080/v1/chat/completions",
       const ENUM_LLM_THINKING thinking = LLM_THINKING_MEDIUM
    );                                                                      // Constructor
-                    ~Agent();                                              // Deconstructor
+   ~Agent();                                              // Deconstructor
    void              reset();                                              // Clear conversation history while preserving the system message
    string            run(string prompt);                                   // Process one user turn and return the assistant's final text response
    bool              hasSession();                                         // True when an active session exists
@@ -41,7 +41,8 @@ public:
    int               historyCount();                                       // Number of conversation messages
    bool              historyMessage(int i, string &role, string &content); // Read a conversation entry
    string            runSubAgent(string prompt);                           // Launch sub-agent on new chart
-   string            pollSubAgent(string subAgentId);                      // Collect sub-agent result
+   string            collectSubAgentsAndWait();                            // Wait for all sub-agents
+   string            pollSubAgent(string subAgentId, bool appendToConversation = true); // Collect sub-agent result
 
 private:
    CJAVal            m_messages;        // persistent conversation history (jtARRAY)
@@ -55,8 +56,10 @@ private:
    ENUM_LLM_PROVIDER m_providerId;      // LLM provider
    ENUM_LLM_MODEL    m_providerModel;   // LLM model
    ENUM_LLM_THINKING m_thinking;        // LLM thinking level
-   string            m_pendingSubAgents[]; // pending sub-agent ids
+   string            m_pendingSubAgents[];      // pending sub-agent ids
+   string            m_pendingSubAgentPrompts[]; // pending sub-agent prompts
 
+   void              addSubAgentTool();                                      // Add the sub-agent tool to the dispatcher
    string            loadContextFiles();                                     // Read and concatenate all CONTEXT_FILES
    bool              initialize();                                           // Load system prompt and context files
    bool              hasConversation();                                      // True when history holds a user/assistant turn
@@ -65,6 +68,7 @@ private:
    void              pushToolResult(string toolCallId, string content);      // Append a tool result message
    void              pushToolResultImage(string toolCallId, string b64data); // Append a tool result image
    void              collectSubAgents();                                     // Drain finished sub-agents
+   string            subAgentLabel(string id, string prompt);                // Label a sub-agent result
    void              setThinking(CJAVal& payload);                           // Set the "thinking" parameter in the payload
 };
 
@@ -75,12 +79,14 @@ Agent::Agent(string apiKey, const ENUM_LLM_PROVIDER providerId, const ENUM_LLM_M
 {
    m_messages.m_type = jtARRAY;
    m_dispatch        = new Dispatch();
+   addSubAgentTool();
    m_llm             = LLM(providerId, providerModel, localUrl, thinking);
    m_apiKey          = apiKey;
    m_providerId      = providerId;
    m_providerModel   = providerModel;
    m_thinking        = thinking;
    ArrayResize(m_pendingSubAgents, 0);
+   ArrayResize(m_pendingSubAgentPrompts, 0);
    m_initialized     = initialize();
    m_headers = "Content-Type: application/json\r\n";
    if(m_llm.id != "local")
@@ -109,6 +115,69 @@ Agent::~Agent()
       delete m_session;
       m_session = NULL;
    }
+}
+
+//+------------------------------------------------------------------+
+//| Parameters for run_subagent                                      |
+//+------------------------------------------------------------------+
+Parameters *toolRunSubAgentParams(void)
+{
+   Parameters *p = new Parameters();
+   p.add(new Property("prompt", "string", "The prompt to send to the sub-agent", true));
+   return p;
+}
+
+//+------------------------------------------------------------------+
+//| Tool — run a prompt on a separate sub-agent                      |
+//+------------------------------------------------------------------+
+class ToolRunSubAgent : public Tool
+{
+private:
+   Agent             *m_agent; // agent that owns this tool
+
+public:
+   ToolRunSubAgent(Agent *agent) : Tool("run_subagent", "Launch a sub-agent on a separate chart with the given prompt and return its id immediately (it runs in parallel). Launch as many as needed to split a large task, then call collect_subagents to retrieve all results.", toolRunSubAgentParams())
+   {
+      m_agent = agent;
+   }
+
+   virtual string    execute(CJAVal &json) override
+   {
+      const string id = m_agent.runSubAgent(json["prompt"].ToStr());
+      if(StringFind(id, "subagent_") == 0)
+         return "Launched sub-agent " + id + ". Call collect_subagents to retrieve its result.";
+      return id; // launch failure message
+   }
+};
+
+//+------------------------------------------------------------------+
+//| Tool — collect all sub-agent results                             |
+//+------------------------------------------------------------------+
+class ToolCollectSubAgents : public Tool
+{
+private:
+   Agent             *m_agent; // agent that owns this tool
+
+public:
+   ToolCollectSubAgents(Agent *agent) : Tool("collect_subagents", "Wait for all launched sub-agents to finish and return all their results together. Call after launching sub-agents with run_subagent.", NULL)
+   {
+      m_agent = agent;
+   }
+
+   virtual string    execute(CJAVal &json) override
+   {
+      return m_agent.collectSubAgentsAndWait();
+   }
+};
+
+//+------------------------------------------------------------------+
+//| Create and add the sub-agent tool to the dispatcher              |
+//+------------------------------------------------------------------+
+void Agent::addSubAgentTool()
+{
+   if(CheckPointer(m_dispatch) != POINTER_DYNAMIC) return;
+   m_dispatch.add(new ToolRunSubAgent(this));
+   m_dispatch.add(new ToolCollectSubAgents(this));
 }
 
 //+------------------------------------------------------------------+
@@ -525,7 +594,9 @@ string Agent::runSubAgent(string prompt)
 // Track for later collection
    int pendingCount = ArraySize(m_pendingSubAgents);
    ArrayResize(m_pendingSubAgents, pendingCount + 1);
-   m_pendingSubAgents[pendingCount] = id;
+   ArrayResize(m_pendingSubAgentPrompts, pendingCount + 1);
+   m_pendingSubAgents[pendingCount]      = id;
+   m_pendingSubAgentPrompts[pendingCount] = prompt;
 
    PrintFormat("[Agent] Launched sub-agent %s on chart %d", id, chartId);
 
@@ -539,7 +610,7 @@ string Agent::runSubAgent(string prompt)
 //+------------------------------------------------------------------+
 //| Poll for the saved response file, append result                  |
 //+------------------------------------------------------------------+
-string Agent::pollSubAgent(string subAgentId)
+string Agent::pollSubAgent(string subAgentId, bool appendToConversation)
 {
 #ifdef __MQL5__
    const string responseRel = SUBAGENT_FOLDER + "\\" + subAgentId + ".response.json";
@@ -574,11 +645,93 @@ string Agent::pollSubAgent(string subAgentId)
 // Append to conversation
    if(response != "")
    {
-      pushMessage("user", "Sub-agent [" + subAgentId + "] result:\n" + response);
       Print("[Agent] Sub-agent ", subAgentId, " (session ", subSession, ") returned: ", response);
+      if(appendToConversation)
+         pushMessage("user", "Sub-agent [" + subAgentId + "] result:\n" + response);
    }
 
    return response;
+#else
+   return "";
+#endif
+}
+
+//+------------------------------------------------------------------+
+//| Build a readable label for a sub-agent result                    |
+//+------------------------------------------------------------------+
+string Agent::subAgentLabel(string id, string prompt)
+{
+   string shortPrompt = prompt;
+   StringReplace(shortPrompt, "\n", " ");
+   StringReplace(shortPrompt, "\r", " ");
+   StringReplace(shortPrompt, "\"", "");
+   if(StringLen(shortPrompt) > 100)
+      shortPrompt = StringSubstr(shortPrompt, 0, 100) + "...";
+   return "Sub-agent " + id + " (prompt: \"" + shortPrompt + "\")";
+}
+
+//+------------------------------------------------------------------+
+//| Wait for all sub-agents and return their results                 |
+//+------------------------------------------------------------------+
+string Agent::collectSubAgentsAndWait()
+{
+#ifdef __MQL5__
+   CJAVal results;
+   results.m_type = jtARRAY;
+   const int timeoutAttempts = 600; // 10 minutes
+
+   for(int attempt = 0; attempt < timeoutAttempts; attempt++)
+   {
+      const int pending = ArraySize(m_pendingSubAgents);
+      if(pending == 0)
+         break;
+
+      string remainingIds[];
+      string remainingPrompts[];
+      int kept = 0;
+      for(int i = 0; i < pending; i++)
+      {
+         const string id     = m_pendingSubAgents[i];
+         const string prompt = m_pendingSubAgentPrompts[i];
+         const string result = pollSubAgent(id, false);
+         if(result != "")
+            results.Add(subAgentLabel(id, prompt) + "\n" + result);
+         else
+         {
+            ArrayResize(remainingIds, kept + 1);
+            ArrayResize(remainingPrompts, kept + 1);
+            remainingIds[kept]     = id;
+            remainingPrompts[kept] = prompt;
+            kept++;
+         }
+      }
+
+      ArrayResize(m_pendingSubAgents, 0);
+      ArrayResize(m_pendingSubAgentPrompts, 0);
+      for(int i = 0; i < kept; i++)
+      {
+         ArrayResize(m_pendingSubAgents, i + 1);
+         ArrayResize(m_pendingSubAgentPrompts, i + 1);
+         m_pendingSubAgents[i]      = remainingIds[i];
+         m_pendingSubAgentPrompts[i] = remainingPrompts[i];
+      }
+      if(kept == 0)
+         break;
+      Sleep(1000);
+   }
+
+   string out = "";
+   const int resultCount = ArraySize(results.m_e);
+   for(int i = 0; i < resultCount; i++)
+   {
+      if(i > 0) out += "\n\n";
+      out += results[i].ToStr();
+   }
+   if(out == "")
+      out = "No sub-agent results available.";
+   else if(ArraySize(m_pendingSubAgents) > 0)
+      out += "\n\nNote: " + (string)ArraySize(m_pendingSubAgents) + " sub-agent(s) did not finish within the timeout.";
+   return out;
 #else
    return "";
 #endif
@@ -593,7 +746,8 @@ void Agent::collectSubAgents()
    if(pendingCount == 0)
       return;
 
-   string remaining[];
+   string remainingIds[];
+   string remainingPrompts[];
    int kept = 0;
    for(int i = 0; i < pendingCount; i++)
    {
@@ -601,15 +755,21 @@ void Agent::collectSubAgents()
       // Keep unfinished for next call
       if(result == "" && FileIsExist(SUBAGENT_FOLDER + "\\" + m_pendingSubAgents[i] + ".response.json", FILE_COMMON))
       {
-         ArrayResize(remaining, kept + 1);
-         remaining[kept++] = m_pendingSubAgents[i];
+         ArrayResize(remainingIds, kept + 1);
+         ArrayResize(remainingPrompts, kept + 1);
+         remainingIds[kept]     = m_pendingSubAgents[i];
+         remainingPrompts[kept] = m_pendingSubAgentPrompts[i];
+         kept++;
       }
    }
    ArrayResize(m_pendingSubAgents, 0);
+   ArrayResize(m_pendingSubAgentPrompts, 0);
    for(int i = 0; i < kept; i++)
    {
       ArrayResize(m_pendingSubAgents, i + 1);
-      m_pendingSubAgents[i] = remaining[i];
+      ArrayResize(m_pendingSubAgentPrompts, i + 1);
+      m_pendingSubAgents[i]      = remainingIds[i];
+      m_pendingSubAgentPrompts[i] = remainingPrompts[i];
    }
 }
 
