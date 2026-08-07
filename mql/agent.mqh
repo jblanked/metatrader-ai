@@ -437,9 +437,10 @@ string Agent::runSubAgent(string prompt)
    if(!FolderCreate(SUBAGENT_FOLDER, FILE_COMMON))
       return "Sub-agent failed: could not create the subagents folder.";
 
-   const string mq5Rel     = SUBAGENT_FOLDER + "\\" + id + ".mq5";
-   const string promptRel  = SUBAGENT_FOLDER + "\\" + id + ".prompt.txt";
-   const string ex5Rel     = SUBAGENT_FOLDER + "\\" + id + ".ex5";
+   const string promptRel     = SUBAGENT_FOLDER + "\\" + id + ".prompt.txt";
+   const string expertsFolder = TerminalInfoString(TERMINAL_DATA_PATH) + "\\MQL5\\" + SUBAGENT_EXE_FOLDER;
+   const string mq5Path       = expertsFolder + id + ".mq5";
+   const string ex5Path       = expertsFolder + id + ".ex5";
 
    // Save prompt file
    FileDelete(promptRel, FILE_COMMON);
@@ -449,34 +450,23 @@ string Agent::runSubAgent(string prompt)
    FileWriteString(ph, prompt);
    FileClose(ph);
 
-   // Write generated script
+   // Write generated script into the Experts folder
    const string source = buildSubAgentSource(id, m_apiKey, m_providerId, m_providerModel, m_llm.url, m_thinking);
-   FileDelete(mq5Rel, FILE_COMMON);
-   int sh = FileOpen(mq5Rel, FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON);
-   if(sh == INVALID_HANDLE)
+   char srcData[];
+   StringToCharArray(source, srcData);
+   if(fileWrite(mq5Path, srcData) != "true")
    {
       FileDelete(promptRel, FILE_COMMON);
       return "Sub-agent failed: could not write the script (error " + (string)GetLastError() + ").";
    }
-   FileWriteString(sh, source);
-   FileClose(sh);
 
-   // Compile script
-   const string compileLog = compileMql5(COMMON_FOLDER + mq5Rel);
-   if(StringFind(compileLog, "[Build Error]") >= 0 || StringFind(compileLog, "error:") >= 0)
+   // Compile script in place
+   const string compileLog = compileMql5(mq5Path);
+   if(StringFind(compileLog, "[Build Error]") >= 0 || StringFind(compileLog, "error:") >= 0 || fileExists(ex5Path) != "true")
    {
       FileDelete(promptRel, FILE_COMMON);
-      FileDelete(mq5Rel, FILE_COMMON);
+      fileDelete(mq5Path);
       return "Sub-agent compile failed:\n" + extractCompileErrors(compileLog);
-   }
-
-   // Move to Scripts folder
-   const string scriptsFolder = TerminalInfoString(TERMINAL_DATA_PATH) + "\\MQL5\\" + SUBAGENT_EXE_FOLDER;
-   if(fileMove(COMMON_FOLDER + ex5Rel, scriptsFolder) != "true")
-   {
-      FileDelete(promptRel, FILE_COMMON);
-      FileDelete(mq5Rel, FILE_COMMON);
-      return "Sub-agent failed: could not move " + id + ".ex5 into the Scripts folder.";
    }
 
    // Open new chart
@@ -484,7 +474,7 @@ string Agent::runSubAgent(string prompt)
    if(chartId == 0)
    {
       FileDelete(promptRel, FILE_COMMON);
-      FileDelete(mq5Rel, FILE_COMMON);
+      fileDelete(mq5Path);
       return "Sub-agent failed: ChartOpen error " + (string)GetLastError() + ".";
    }
 
@@ -502,12 +492,24 @@ string Agent::runSubAgent(string prompt)
    prms[5].type          = TYPE_INT;
    prms[5].integer_value = (int)m_thinking;
 
-   if(!EXPERT::Run(chartId, prms))
+   // Attach on the new chart; retry while MetaTrader indexes the new .ex5
+   bool attached = false;
+   for(int attempt = 0; attempt < 5 && !attached; attempt++)
    {
+      attached = EXPERT::Run(chartId, prms);
+      if(attached)
+         attached = (ChartGetString(chartId, CHART_EXPERT_NAME) != "");
+      if(!attached)
+         Sleep(500);
+   }
+   if(!attached)
+   {
+      const string ex5Status = fileExists(ex5Path);
       ChartClose(chartId);
       FileDelete(promptRel, FILE_COMMON);
-      FileDelete(mq5Rel, FILE_COMMON);
-      return "Sub-agent failed: EXPERT::Run could not attach the sub-agent to the new chart.";
+      fileDelete(mq5Path);
+      fileDelete(ex5Path);
+      return "Sub-agent failed: EXPERT::Run could not attach " + SUBAGENT_EXE_FOLDER + id + ".ex5 (ex5 exists: " + ex5Status + ").";
    }
 
    // Track for later collection
@@ -553,9 +555,10 @@ string Agent::pollSubAgent(string subAgentId)
 
    // Clean up artifacts
    FileDelete(responseRel, FILE_COMMON);
-   FileDelete(SUBAGENT_FOLDER + "\\" + subAgentId + ".mq5", FILE_COMMON);
    FileDelete(SUBAGENT_FOLDER + "\\" + subAgentId + ".prompt.txt", FILE_COMMON);
+   fileDelete(TerminalInfoString(TERMINAL_DATA_PATH) + "\\MQL5\\" + SUBAGENT_EXE_FOLDER + subAgentId + ".mq5");
    fileDelete(TerminalInfoString(TERMINAL_DATA_PATH) + "\\MQL5\\" + SUBAGENT_EXE_FOLDER + subAgentId + ".ex5");
+   fileDelete(TerminalInfoString(TERMINAL_DATA_PATH) + "\\MQL5\\" + SUBAGENT_EXE_FOLDER + subAgentId + ".log");
 
    // Close sub-agent chart
    if(chartId != 0 && chartId != ChartID())
