@@ -15,9 +15,6 @@
 #include "tools/context.mqh"
 #include "tools/fxsaber/Expert.mqh"
 
-//+------------------------------------------------------------------+
-//| Sub-agent configuration                                          |
-//+------------------------------------------------------------------+
 #define SUBAGENT_FOLDER "metatrader-ai\\subagents" // common-files sub-agent folder
 #define SUBAGENT_EXE    "Experts\\app.ex5"         // sub-agent expert path
 
@@ -456,16 +453,26 @@ string Agent::runSubAgent(string prompt)
 
 // Forward credentials and prompt to app.ex5 (inputs in declaration order)
    MqlParam prms[10];
-   prms[0].type = TYPE_STRING; prms[0].string_value = SUBAGENT_EXE;          // expert path
-   prms[1].type = TYPE_STRING; prms[1].string_value = m_apiKey;              // inpApiKey
-   prms[2].type = TYPE_INT;    prms[2].integer_value = (int)m_providerId;    // inpProvider
-   prms[3].type = TYPE_INT;    prms[3].integer_value = (int)m_providerModel; // inpModel
-   prms[4].type = TYPE_STRING; prms[4].string_value = m_llm.url;             // inpLocalUrl
-   prms[5].type = TYPE_INT;    prms[5].integer_value = (int)m_thinking;      // inpThinking
-   prms[6].type = TYPE_STRING; prms[6].string_value = "true";                // inpRunSubAgent
-   prms[7].type = TYPE_STRING; prms[7].string_value = "";                    // inpPrompt
-   prms[8].type = TYPE_STRING; prms[8].string_value = promptRel;             // inpPromptFile
-   prms[9].type = TYPE_STRING; prms[9].string_value = responseRel;           // inpResponseFile
+   prms[0].type = TYPE_STRING;
+   prms[0].string_value = SUBAGENT_EXE;          // expert path
+   prms[1].type = TYPE_STRING;
+   prms[1].string_value = m_apiKey;              // inpApiKey
+   prms[2].type = TYPE_INT;
+   prms[2].integer_value = (int)m_providerId;    // inpProvider
+   prms[3].type = TYPE_INT;
+   prms[3].integer_value = (int)m_providerModel; // inpModel
+   prms[4].type = TYPE_STRING;
+   prms[4].string_value = m_llm.url;             // inpLocalUrl
+   prms[5].type = TYPE_INT;
+   prms[5].integer_value = (int)m_thinking;      // inpThinking
+   prms[6].type = TYPE_STRING;
+   prms[6].string_value = "true";                // inpRunSubAgent
+   prms[7].type = TYPE_STRING;
+   prms[7].string_value = "";                    // inpPrompt
+   prms[8].type = TYPE_STRING;
+   prms[8].string_value = promptRel;             // inpPromptFile
+   prms[9].type = TYPE_STRING;
+   prms[9].string_value = responseRel;           // inpResponseFile
 
 // Attach is asynchronous: retry until the EA name appears on the chart
    bool attached = false;

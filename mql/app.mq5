@@ -7,22 +7,22 @@
 #property link      "https://www.jblanked.com"
 #property version   "1.08"
 #property description "MetaTrader-AI: AI trading assistant for MetaTrader 5"
-#property description "Last updated: August 6th, 2026"
+#property description "Last updated: August 7th, 2026"
 #property strict
 
 #include "agent.mqh"
 #include "tools/Panel-Draw.mqh"
 #include <VirtualKeys.mqh>
 
-input string            inpApiKey   = "sk--";                                      // Your API Key
-input ENUM_LLM_PROVIDER inpProvider = LLM_PROVIDER_DEEPSEEK;                       // LLM Provider
-input ENUM_LLM_MODEL    inpModel    = LLM_MODEL_DEEPSEEK_V4_FLASH;                 // LLM Model
-input string            inpLocalUrl = "http://127.0.0.1:8080/v1/chat/completions"; // Local LLM URL
-input ENUM_LLM_THINKING inpThinking = LLM_THINKING_MEDIUM;                         // LLM Thinking Level
-input bool              inpRunSubAgent = false;                                    // Run prompt via sub-agent
-input string            inpPrompt      = "";                                       // Prompt for sub-agent mode
-input string            inpPromptFile  = "";                                       // Prompt file path
-input string            inpResponseFile = "";                                      // Response file path
+input string            inpApiKey       = "sk--";                                      // Your API Key
+input ENUM_LLM_PROVIDER inpProvider     = LLM_PROVIDER_DEEPSEEK;                       // LLM Provider
+input ENUM_LLM_MODEL    inpModel        = LLM_MODEL_DEEPSEEK_V4_FLASH;                 // LLM Model
+input string            inpLocalUrl     = "http://127.0.0.1:8080/v1/chat/completions"; // Local LLM URL
+input ENUM_LLM_THINKING inpThinking     = LLM_THINKING_NONE;                           // LLM Thinking Level
+input bool              inpRunSubAgent  = false;                                       // Run prompt via sub-agent
+input string            inpPrompt       = "";                                          // Prompt for sub-agent mode
+input string            inpPromptFile   = "";                                          // Prompt file path
+input string            inpResponseFile = "";                                          // Response file path
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
 //+------------------------------------------------------------------+
@@ -34,7 +34,7 @@ int OnInit()
 
    agent = new Agent(inpApiKey, inpProvider, inpModel, inpLocalUrl, inpThinking);
 
-   // Headless: run prompt directly on this instance
+// Headless: run prompt directly on this instance
    if(inpRunSubAgent)
    {
       g_subAgentHeadless = true;
@@ -99,7 +99,7 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
 //+------------------------------------------------------------------+
 void OnTimer()
 {
-   // Headless: run the prompt once and write the result file
+// Headless: run the prompt once and write the result file
    if(g_subAgentHeadless)
    {
       if(!g_subAgentDone)
@@ -138,6 +138,7 @@ void OnTimer()
 
          string sessionName = agent.newSession();
          string response = agent.run(prompt);
+         PrintFormat("[App] Sub-agent response:\n%s", response);
 
          // Write the result file for the parent to collect
          if(inpResponseFile != "")
