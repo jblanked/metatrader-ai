@@ -18,7 +18,7 @@
 //| Sub-agent configuration                                          |
 //+------------------------------------------------------------------+
 #define SUBAGENT_FOLDER     "metatrader-ai\\subagents" // common-files sub-agent folder
-#define SUBAGENT_EXE_FOLDER "Scripts\\"              // sub-agent .ex5 folder
+#define SUBAGENT_EXE_FOLDER "Experts\\"                // sub-agent .ex5 folder
 
 //+------------------------------------------------------------------+
 //| Agent — wraps multi-turn conversation state and OpenAI API calls |
