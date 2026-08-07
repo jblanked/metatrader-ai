@@ -37,6 +37,12 @@ private:
 //+------------------------------------------------------------------+
 Session::Session(bool create, bool shouldSaveOnExit)
 {
+    if (!FolderCreate(SESSION_FOLDER, FILE_COMMON))
+   {
+      PrintFormat("Failed to create session folder: %s", SESSION_FOLDER);
+      return false;
+   }
+   
    if(create)
    {
       id           = (long)TimeCurrent();
@@ -90,12 +96,6 @@ bool Session::load(string filename)
 bool Session::save()
 {
    if(!isSet) return false;
-
-   if (!FolderCreate(SESSION_FOLDER, FILE_COMMON))
-   {
-      PrintFormat("Failed to create session folder: %s", SESSION_FOLDER);
-      return false;
-   }
 
    CJAVal json;
    json["id"]           = id;
