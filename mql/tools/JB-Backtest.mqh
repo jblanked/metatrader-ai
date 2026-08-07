@@ -515,7 +515,7 @@ string              CBacktest::run(const bool openFolder = false, const bool rem
       if (MTTESTER::GetLastTstCache(Bytes2) != -1) // If it was possible to read the last cache record of a single run
       {
          const SINGLETESTERCACHE SingleTesterCache(Bytes2); // Drive it into the corresponding object.
-         const string fileName = StringFormat("backtest\\%s\\single-test.txt", expertName);
+         const string fileName = StringFormat("backtest\\%s\\single-test-%d.txt", expertName, (int)TimeCurrent());
          uchar Array[];
          res = SingleTesterCache.Summary.ToString();
          if (!(StringToCharArray(res, Array) > 0) || !FileSave(fileName, Array, FILE_READ | FILE_WRITE | FILE_COMMON | FILE_BIN))
@@ -544,7 +544,7 @@ string              CBacktest::run(const bool openFolder = false, const bool rem
             string newLocation = StringFormat("%s\\Files\\backtest\\%s\\%s", TESTER_COMMON_PATH, expertName, optiFileName);
             moveFile(ogLocation, newLocation);
          }
-         const string fileName = StringFormat("backtest\\%s\\optimization.txt", expertName);
+         const string fileName = StringFormat("backtest\\%s\\optimization-%d.txt", expertName, (int)TimeCurrent());
          if (!(StringToCharArray(res, Array) > 0) || !FileSave(fileName, Array, FILE_READ | FILE_WRITE | FILE_COMMON | FILE_BIN))
          {
             PrintFormat("Failed to save optimization report to %s%s", TESTER_COMMON_PATH, fileName);
