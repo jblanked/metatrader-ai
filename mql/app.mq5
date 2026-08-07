@@ -5,9 +5,9 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026,JBlanked LLC"
 #property link      "https://www.jblanked.com"
-#property version   "1.07"
+#property version   "1.08"
 #property description "MetaTrader-AI: AI trading assistant for MetaTrader 5"
-#property description "Last updated: August 2nd, 2026"
+#property description "Last updated: August 6th, 2026"
 #property strict
 
 #include "agent.mqh"
@@ -1306,7 +1306,7 @@ void AIPanel::CopyConversation()
    }
    StringTrimRight(text);
    if(StringLen(text) == 0) return;
-   if(!ClipboardSetString(text)) return;
+   if(!MTTESTER::SetClipboard(text)) return;
    m_copyFlashCounter = 1000;
    m_btnCopy.Text("Copied!");
    ChartRedraw();
