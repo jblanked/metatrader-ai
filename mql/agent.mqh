@@ -483,16 +483,6 @@ string Agent::runSubAgent(string prompt)
    MqlParam prms[6];
    prms[0].type          = TYPE_STRING;
    prms[0].string_value  = SUBAGENT_EXE_FOLDER + id + ".ex5";
-   prms[1].type          = TYPE_STRING;
-   prms[1].string_value  = m_apiKey;
-   prms[2].type          = TYPE_INT;
-   prms[2].integer_value = (int)m_providerId;
-   prms[3].type          = TYPE_INT;
-   prms[3].integer_value = (int)m_providerModel;
-   prms[4].type          = TYPE_STRING;
-   prms[4].string_value  = m_llm.url;
-   prms[5].type          = TYPE_INT;
-   prms[5].integer_value = (int)m_thinking;
 
    // Attach expert and verify presence
    bool attached = false;
