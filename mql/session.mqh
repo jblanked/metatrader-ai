@@ -104,10 +104,14 @@ bool Session::save()
    json["messages"].Set(messages);
 
    const string fullPath = StringFormat("%s%s\\%s.json", FILE_COMMON_FOLDER, SESSION_FOLDER, name);
-   const string content = json.ToStr();
+   const string content = json.Serialize();
    char data[];
-   StringToCharArray(content, data);
-   return fileWrite(fullPath, data, sizeof(data)) == "true";
+   if(StringToCharArray(content, data) == -1)
+   {
+      PrintFormat("Failed to convert JSON content to char array for session: %s", name);
+      return false;
+   }
+   return fileWrite(fullPath, data) == "true";
 }
 //+------------------------------------------------------------------+
 //| True once the session has been created or loaded                 |
