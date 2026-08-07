@@ -13,12 +13,13 @@
 #include "tools/dispatch.mqh"
 #include "tools/requests.mqh"
 #include "tools/context.mqh"
+#include "tools/fxsaber/Expert.mqh"
 
 //+------------------------------------------------------------------+
 //| Sub-agent configuration                                          |
 //+------------------------------------------------------------------+
-#define SUBAGENT_FOLDER           "metatrader-ai\\subagents" // common-files sub-agent folder
-#define SUBAGENT_INDICATOR_FOLDER "Indicators\\"             // sub-agent .ex5 folder
+#define SUBAGENT_FOLDER "metatrader-ai\\subagents" // common-files sub-agent folder
+#define SUBAGENT_EXE    "Experts\\app.ex5"         // sub-agent expert path
 
 //+------------------------------------------------------------------+
 //| Agent — wraps multi-turn conversation state and OpenAI API calls |
@@ -67,9 +68,6 @@ private:
    void              pushToolResult(string toolCallId, string content);      // Append a tool result message
    void              pushToolResultImage(string toolCallId, string b64data); // Append a tool result image
    void              collectSubAgents();                                     // Drain finished sub-agents
-   string            subAgentIndicatorSource();                                 // Generate fixed sub-agent source
-   string            escapeMqlString(string value);                          // Escape for MQL literal
-   string            extractCompileErrors(string log);                       // Extract error lines from log
    void              setThinking(CJAVal& payload);                           // Set the "thinking" parameter in the payload
 };
 
@@ -426,14 +424,12 @@ bool Agent::historyMessage(int i, string &role, string &content)
 }
 
 //+------------------------------------------------------------------+
-//| Run a sub-agent on a NEW chart, return its session id            |
+//| Run app.ex5 on a NEW chart, return its session id                |
 //+------------------------------------------------------------------+
 string Agent::runSubAgent(string prompt)
 {
 #ifdef __MQL5__
-   const string indName   = "MetaTraderAI_SubAgent";
-   const string indFolder = TerminalInfoString(TERMINAL_DATA_PATH) + "\\MQL5\\" + SUBAGENT_INDICATOR_FOLDER;
-   const string id        = StringFormat("subagent_%I64d_%d", (long)TimeCurrent(), (int)GetTickCount());
+   const string id = StringFormat("subagent_%I64d_%d", (long)TimeCurrent(), (int)GetTickCount());
 
    if(!FolderCreate(SUBAGENT_FOLDER, FILE_COMMON))
       return "Sub-agent failed: could not create the subagents folder.";
@@ -449,49 +445,75 @@ string Agent::runSubAgent(string prompt)
    FileWriteString(ph, prompt);
    FileClose(ph);
 
-// Install the fixed sub-agent indicator if missing
-   const string indMq5Path = indFolder + indName + ".mq5";
-   const string indEx5Path = indFolder + indName + ".ex5";
-   if(fileExists(indEx5Path) != "true")
-   {
-      const string src = subAgentIndicatorSource();
-      char data[];
-      StringToCharArray(src, data);
-      if(fileWrite(indMq5Path, data) != "true")
-      {
-         FileDelete(promptRel, FILE_COMMON);
-         return "Sub-agent failed: could not install " + indName + " (error " + (string)GetLastError() + ").";
-      }
-      const string log = compileMql5(indMq5Path);
-      if(StringFind(log, "error:") >= 0 || fileExists(indEx5Path) != "true")
-      {
-         FileDelete(promptRel, FILE_COMMON);
-         return "Sub-agent failed: could not compile " + indName + ":\n" + extractCompileErrors(log);
-      }
-      Print("[Agent] Installed sub-agent indicator ", indName);
-   }
-
-// Open a new chart
+// Open a new chart for the sub-agent
    const long chartId = ChartOpen(_Symbol, PERIOD_CURRENT);
    if(chartId == 0)
    {
       FileDelete(promptRel, FILE_COMMON);
       return "Sub-agent failed: ChartOpen error " + (string)GetLastError() + ".";
    }
+   Sleep(1000);
 
-// Load the fixed indicator with per-call inputs and attach it
-   int indHandle = INVALID_HANDLE;
-   for(int attempt = 0; attempt < 60 && indHandle == INVALID_HANDLE; attempt++)
+// Forward credentials and prompt to app.ex5 (inputs in declaration order)
+   MqlParam prms[];
+   ArrayResize(prms, 10);
+   prms[0].type = TYPE_STRING; prms[0].string_value = SUBAGENT_EXE;          // expert path
+   prms[1].type = TYPE_STRING; prms[1].string_value = m_apiKey;              // inpApiKey
+   prms[2].type = TYPE_INT;    prms[2].integer_value = (int)m_providerId;    // inpProvider
+   prms[3].type = TYPE_INT;    prms[3].integer_value = (int)m_providerModel; // inpModel
+   prms[4].type = TYPE_STRING; prms[4].string_value = m_llm.url;             // inpLocalUrl
+   prms[5].type = TYPE_INT;    prms[5].integer_value = (int)m_thinking;      // inpThinking
+   prms[6].type = TYPE_STRING; prms[6].string_value = "true";                // inpRunSubAgent
+   prms[7].type = TYPE_STRING; prms[7].string_value = "";                    // inpPrompt
+   prms[8].type = TYPE_STRING; prms[8].string_value = promptRel;             // inpPromptFile
+   prms[9].type = TYPE_STRING; prms[9].string_value = responseRel;           // inpResponseFile
+
+// Attach is asynchronous: retry until the EA name appears on the chart
+   bool attached = false;
+   for(int attempt = 0; attempt < 60 && !attached; attempt++)
    {
-      indHandle = iCustom(_Symbol, PERIOD_CURRENT, indName, promptRel, m_apiKey, (int)m_providerId, (int)m_providerModel, m_llm.url, (int)m_thinking, responseRel);
-      if(indHandle == INVALID_HANDLE)
-         Sleep(500);
+      EXPERT::Run(chartId, prms);
+      for(int wait = 0; wait < 10 && !attached; wait++)
+      {
+         if(ChartGetString(chartId, CHART_EXPERT_NAME) != "")
+            attached = true;
+         else
+            Sleep(500);
+      }
    }
-   if(indHandle == INVALID_HANDLE || !ChartIndicatorAdd(chartId, 0, indHandle))
+   if(!attached)
    {
       ChartClose(chartId);
       FileDelete(promptRel, FILE_COMMON);
-      return "Sub-agent failed: could not load " + indName + " (error " + (string)GetLastError() + "). Compile " + indName + " once in MetaEditor, then retry.";
+      return "Sub-agent failed: could not attach " + SUBAGENT_EXE + " on chart " + (string)chartId + ".";
+   }
+
+// First attach can race and leave defaults, so re-apply and verify inputs
+   string names[];
+   MqlParam params[];
+   bool verified = false;
+   for(int attempt = 0; attempt < 10 && !verified; attempt++)
+   {
+      EXPERT::Run(chartId, prms);
+      Sleep(1000);
+      if(EXPERT::Parameters(chartId, params, names))
+      {
+         string gotPrompt = "";
+         string gotUrl    = "";
+         for(int i = 0; i < ArraySize(names); i++)
+         {
+            if(names[i] == "inpPromptFile") gotPrompt = params[i].string_value;
+            if(names[i] == "inpLocalUrl")   gotUrl    = params[i].string_value;
+         }
+         if(gotPrompt == promptRel && gotUrl == m_llm.url)
+            verified = true;
+      }
+   }
+   if(!verified)
+   {
+      ChartClose(chartId);
+      FileDelete(promptRel, FILE_COMMON);
+      return "Sub-agent failed: forwarded inputs not applied on chart " + (string)chartId + ".";
    }
 
 // Track for later collection
@@ -539,12 +561,9 @@ string Agent::pollSubAgent(string subAgentId)
    FileDelete(responseRel, FILE_COMMON);
    FileDelete(SUBAGENT_FOLDER + "\\" + subAgentId + ".prompt.txt", FILE_COMMON);
 
-// Detach sub-agent indicator and close its chart
+// Close the sub-agent's chart
    if(chartId != 0 && chartId != ChartID())
-   {
-      ChartIndicatorDelete(chartId, 0, "MetaTraderAI_SubAgent");
       ChartClose(chartId);
-   }
 
 // Append to conversation
    if(response != "")
@@ -586,156 +605,6 @@ void Agent::collectSubAgents()
       ArrayResize(m_pendingSubAgents, i + 1);
       m_pendingSubAgents[i] = remaining[i];
    }
-}
-
-//+------------------------------------------------------------------+
-//| Generate the fixed sub-agent indicator source                    |
-//+------------------------------------------------------------------+
-string Agent::subAgentIndicatorSource()
-{
-   string src = "";
-   src += "//+------------------------------------------------------------------+\n";
-   src += "//|                                              MetaTraderAI_SubAgent.mq5 |\n";
-   src += "//|                                          Copyright 2026,JBlanked |\n";
-   src += "//+------------------------------------------------------------------+\n";
-   src += "#property copyright \"Copyright 2026,JBlanked\"\n";
-   src += "#property link      \"https://www.jblanked.com/\"\n";
-   src += "#property version   \"1.00\"\n";
-   src += "#property strict\n";
-   src += "#property indicator_chart_window\n";
-   src += "#property indicator_buffers 1\n";
-   src += "#property indicator_plots   1\n";
-   src += "#property indicator_type1   DRAW_NONE\n";
-   src += "#property indicator_label1  \"sub-agent\"\n\n";
-   src += "#include <metatrader-ai\\mql\\agent.mqh>\n\n";
-   src += "input string inpPromptFile   = \"\"; // prompt file\n";
-   src += "input string inpApiKey       = \"\"; // API key\n";
-   src += "input int    inpProvider     = 1;  // provider\n";
-   src += "input int    inpModel        = 13; // model\n";
-   src += "input string inpLocalUrl     = \"\"; // local URL\n";
-   src += "input int    inpThinking     = 2;  // thinking\n";
-   src += "input string inpResponseFile = \"\"; // response file\n\n";
-   src += "double subBuf[];\n\n";
-   src += "//+------------------------------------------------------------------+\n";
-   src += "int OnInit()\n";
-   src += "{\n";
-   src += "   SetIndexBuffer(0, subBuf, INDICATOR_DATA);\n";
-   src += "   return INIT_SUCCEEDED;\n";
-   src += "}\n\n";
-   src += "//+------------------------------------------------------------------+\n";
-   src += "int OnCalculate(const int rates_total, const int prev_calculated, const datetime &time[], const double &open[], const double &high[], const double &low[], const double &close[], const long &tick_volume[], const long &volume[], const int &spread[])\n";
-   src += "{\n";
-   src += "   RunSubAgentWork();\n";
-   src += "   return rates_total;\n";
-   src += "}\n\n";
-   src += "//+------------------------------------------------------------------+\n";
-   src += "void OnDeinit(const int reason)\n";
-   src += "{\n";
-   src += "}\n\n";
-   src += "//+------------------------------------------------------------------+\n";
-   src += "void RunSubAgentWork()\n";
-   src += "{\n";
-   src += "   static bool done = false;\n";
-   src += "   if(done)\n";
-   src += "      return;\n";
-   src += "   done = true;\n\n";
-   src += "   // Read parent prompt\n";
-   src += "   string prompt = \"\";\n";
-   src += "   int r = FileOpen(inpPromptFile, FILE_READ | FILE_TXT | FILE_ANSI | FILE_COMMON);\n";
-   src += "   if(r != INVALID_HANDLE)\n";
-   src += "   {\n";
-   src += "      while(!FileIsEnding(r))\n";
-   src += "      {\n";
-   src += "         prompt += FileReadString(r);\n";
-   src += "         if(!FileIsEnding(r)) prompt += \"\\n\";\n";
-   src += "      }\n";
-   src += "      FileClose(r);\n";
-   src += "   }\n\n";
-   src += "   PrintFormat(\"[SubAgent] prompt length: %d\", StringLen(prompt));\n\n";
-   src += "   string response = \"\";\n";
-   src += "   string sessionName = \"\";\n";
-   src += "   Agent *sub = new Agent(inpApiKey, (ENUM_LLM_PROVIDER)inpProvider, (ENUM_LLM_MODEL)inpModel, inpLocalUrl, (ENUM_LLM_THINKING)inpThinking);\n";
-   src += "   if(CheckPointer(sub) == POINTER_DYNAMIC)\n";
-   src += "   {\n";
-   src += "      sessionName = sub.newSession();\n";
-   src += "      response = sub.run(prompt);\n";
-   src += "      delete sub;\n";
-   src += "   }\n";
-   src += "   else\n";
-   src += "      response = \"Sub-agent failed: could not create Agent (error \" + (string)GetLastError() + \")\";\n\n";
-   src += "   PrintFormat(\"[SubAgent] response (%d chars): %s\", StringLen(response), response);\n\n";
-   src += "   // Write result file\n";
-   src += "   CJAVal result;\n";
-   src += "   result[\"response\"] = response;\n";
-   src += "   result[\"session\"]  = sessionName;\n";
-   src += "   result[\"chart_id\"] = (long)ChartID();\n";
-   src += "   int w = FileOpen(inpResponseFile, FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON);\n";
-   src += "   if(w != INVALID_HANDLE)\n";
-   src += "   {\n";
-   src += "      FileWriteString(w, result.Serialize());\n";
-   src += "      FileClose(w);\n";
-   src += "   }\n";
-   src += "}\n";
-   src += "//+------------------------------------------------------------------+\n";
-
-   return src;
-}
-
-//+------------------------------------------------------------------+
-//| Escape a value for a generated MQL string literal                |
-//+------------------------------------------------------------------+
-string Agent::escapeMqlString(string value)
-{
-   string out = "";
-   const int len = StringLen(value);
-   for(int i = 0; i < len; i++)
-   {
-      const ushort c = StringGetCharacter(value, i);
-      switch(c)
-      {
-      case '\\':
-         out += "\\\\";
-         break;
-      case '"':
-         out += "\\\"";
-         break;
-      case '\r':
-         out += "\\r";
-         break;
-      case '\n':
-         out += "\\n";
-         break;
-      case '\t':
-         out += "\\t";
-         break;
-      default:
-         out += ShortToString(c);
-         break;
-      }
-   }
-   return out;
-}
-
-//+------------------------------------------------------------------+
-//| Extract error and warning lines from a compile log               |
-//+------------------------------------------------------------------+
-string Agent::extractCompileErrors(string log)
-{
-   string out = "";
-   string lines[];
-   const int count = StringSplit(log, '\n', lines);
-   for(int i = 0; i < count; i++)
-   {
-      string line = lines[i];
-      StringTrimLeft(line);
-      StringTrimRight(line);
-      if(line == "") continue;
-      if(StringFind(line, "error:") >= 0 || StringFind(line, "warning:") >= 0 || StringFind(line, "error(s)") >= 0 || StringFind(line, "warning(s)") >= 0)
-         out += line + "\n";
-   }
-   if(out == "")
-      out = "(no error details in compile log)";
-   return out;
 }
 
 //+------------------------------------------------------------------+

@@ -19,6 +19,10 @@ input ENUM_LLM_PROVIDER inpProvider = LLM_PROVIDER_DEEPSEEK;                    
 input ENUM_LLM_MODEL    inpModel    = LLM_MODEL_DEEPSEEK_V4_FLASH;                 // LLM Model
 input string            inpLocalUrl = "http://127.0.0.1:8080/v1/chat/completions"; // Local LLM URL
 input ENUM_LLM_THINKING inpThinking = LLM_THINKING_MEDIUM;                         // LLM Thinking Level
+input bool              inpRunSubAgent = false;                                    // Run prompt via sub-agent
+input string            inpPrompt      = "";                                       // Prompt for sub-agent mode
+input string            inpPromptFile  = "";                                       // Prompt file path
+input string            inpResponseFile = "";                                      // Response file path
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
 //+------------------------------------------------------------------+
@@ -28,14 +32,22 @@ int OnInit()
    g_prevQuickNavigationKnown = true;
    ChartSetInteger(0, CHART_QUICK_NAVIGATION, false);
 
+   agent = new Agent(inpApiKey, inpProvider, inpModel, inpLocalUrl, inpThinking);
+
+   // Headless: run prompt directly on this instance
+   if(inpRunSubAgent)
+   {
+      g_subAgentHeadless = true;
+      EventSetMillisecondTimer(500);
+      return INIT_SUCCEEDED;
+   }
+
    bool timerSet = EventSetMillisecondTimer(1);
    while(!timerSet)
    {
       timerSet = EventSetMillisecondTimer(1);
       Sleep(1);
    }
-
-   agent = new Agent(inpApiKey, inpProvider, inpModel, inpLocalUrl, inpThinking);
 
    int panelW = (int)(ChartGetInteger(0, CHART_WIDTH_IN_PIXELS) / 2.5);
    int panelH = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS) - 40;
@@ -79,13 +91,76 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
 {
-   panel.PanelChartEvent(id, lparam, dparam, sparam);
+   if(CheckPointer(panel) == POINTER_DYNAMIC)
+      panel.PanelChartEvent(id, lparam, dparam, sparam);
 }
 //+------------------------------------------------------------------+
 //| Expert timer function                                            |
 //+------------------------------------------------------------------+
 void OnTimer()
 {
+   // Headless: run the prompt once and write the result file
+   if(g_subAgentHeadless)
+   {
+      if(!g_subAgentDone)
+      {
+         g_subAgentDone = true;
+
+         string prompt = inpPrompt;
+         if(prompt == "")
+         {
+            // Sub-agent mode: common-files relative path
+            if(inpPromptFile != "" && FileIsExist(inpPromptFile, FILE_COMMON))
+            {
+               int rh = FileOpen(inpPromptFile, FILE_READ | FILE_TXT | FILE_ANSI | FILE_COMMON);
+               if(rh != INVALID_HANDLE)
+               {
+                  while(!FileIsEnding(rh))
+                  {
+                     prompt += FileReadString(rh);
+                     if(!FileIsEnding(rh)) prompt += "\n";
+                  }
+                  FileClose(rh);
+               }
+            }
+            // Manual use: absolute path
+            if(prompt == "" && inpPromptFile != "" && fileExists(inpPromptFile) == "true")
+               prompt = fileRead(inpPromptFile);
+         }
+
+         if(prompt == "")
+         {
+            Print("[App] No prompt for sub-agent mode");
+            EventKillTimer();
+            ExpertRemove();
+            return;
+         }
+
+         string sessionName = agent.newSession();
+         string response = agent.run(prompt);
+         PrintFormat("[App] Sub-agent response:\n%s", response);
+
+         // Write the result file for the parent to collect
+         if(inpResponseFile != "")
+         {
+            CJAVal result;
+            result["response"] = response;
+            result["session"]  = sessionName;
+            result["chart_id"] = (long)ChartID();
+            int w = FileOpen(inpResponseFile, FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON);
+            if(w != INVALID_HANDLE)
+            {
+               FileWriteString(w, result.Serialize());
+               FileClose(w);
+            }
+         }
+
+         EventKillTimer();
+         ExpertRemove();
+      }
+      return;
+   }
+
    panel.OnTickUpdate();
 
    if(panel.IsRequestPending())
@@ -1863,6 +1938,8 @@ void AIPanel::OnTickUpdate()
 //+------------------------------------------------------------------+
 bool     g_prevQuickNavigation = false;
 bool     g_prevQuickNavigationKnown = false;
+bool     g_subAgentHeadless = false;
+bool     g_subAgentDone = false;
 AIPanel  *panel;
 Agent    *agent;
 //+------------------------------------------------------------------+
