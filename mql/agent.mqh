@@ -17,8 +17,8 @@
 //+------------------------------------------------------------------+
 //| Sub-agent configuration                                          |
 //+------------------------------------------------------------------+
-#define SUBAGENT_FOLDER     "metatrader-ai\\subagents" // common-files sub-agent folder
-#define SUBAGENT_EXE_FOLDER "Experts\\"                // sub-agent .ex5 folder
+#define SUBAGENT_FOLDER           "metatrader-ai\\subagents" // common-files sub-agent folder
+#define SUBAGENT_INDICATOR_FOLDER "Indicators\\"             // sub-agent .ex5 folder
 
 //+------------------------------------------------------------------+
 //| Agent — wraps multi-turn conversation state and OpenAI API calls |
@@ -67,7 +67,7 @@ private:
    void              pushToolResult(string toolCallId, string content);      // Append a tool result message
    void              pushToolResultImage(string toolCallId, string b64data); // Append a tool result image
    void              collectSubAgents();                                     // Drain finished sub-agents
-   string            buildSubAgentSource(string id, string apiKey, ENUM_LLM_PROVIDER providerId, ENUM_LLM_MODEL providerModel, string localUrl, ENUM_LLM_THINKING thinking); // Generate sub-agent source
+   string            buildSubAgentIndicatorSource(string id, string apiKey, ENUM_LLM_PROVIDER providerId, ENUM_LLM_MODEL providerModel, string localUrl, ENUM_LLM_THINKING thinking); // Generate sub-agent source
    string            escapeMqlString(string value);                          // Escape for MQL literal
    string            extractCompileErrors(string log);                       // Extract error lines from log
    void              setThinking(CJAVal& payload);                           // Set the "thinking" parameter in the payload
@@ -207,7 +207,7 @@ string Agent::run(string prompt)
    if(!hasSession())
       newSession();
 
-   // Append finished sub-agent results
+// Append finished sub-agent results
    collectSubAgents();
 
    pushMessage("user", prompt);
@@ -437,10 +437,10 @@ string Agent::runSubAgent(string prompt)
    if(!FolderCreate(SUBAGENT_FOLDER, FILE_COMMON))
       return "Sub-agent failed: could not create the subagents folder.";
 
-   const string promptRel     = SUBAGENT_FOLDER + "\\" + id + ".prompt.txt";
-   const string expertsFolder = TerminalInfoString(TERMINAL_DATA_PATH) + "\\MQL5\\" + SUBAGENT_EXE_FOLDER;
-   const string mq5Path       = expertsFolder + id + ".mq5";
-   const string ex5Path       = expertsFolder + id + ".ex5";
+   const string promptRel        = SUBAGENT_FOLDER + "\\" + id + ".prompt.txt";
+   const string indicatorsFolder = TerminalInfoString(TERMINAL_DATA_PATH) + "\\MQL5\\" + SUBAGENT_INDICATOR_FOLDER;
+   const string mq5Path          = indicatorsFolder + id + ".mq5";
+   const string ex5Path          = indicatorsFolder + id + ".ex5";
 
    // Save prompt file
    FileDelete(promptRel, FILE_COMMON);
@@ -450,17 +450,17 @@ string Agent::runSubAgent(string prompt)
    FileWriteString(ph, prompt);
    FileClose(ph);
 
-   // Write generated script into the Experts folder
-   const string source = buildSubAgentSource(id, m_apiKey, m_providerId, m_providerModel, m_llm.url, m_thinking);
+   // Write generated indicator into the Indicators folder
+   const string source = buildSubAgentIndicatorSource(id, m_apiKey, m_providerId, m_providerModel, m_llm.url, m_thinking);
    char srcData[];
    StringToCharArray(source, srcData);
    if(fileWrite(mq5Path, srcData) != "true")
    {
       FileDelete(promptRel, FILE_COMMON);
-      return "Sub-agent failed: could not write the script (error " + (string)GetLastError() + ").";
+      return "Sub-agent failed: could not write the indicator (error " + (string)GetLastError() + ").";
    }
 
-   // Compile script in place
+   // Compile indicator in place
    const string compileLog = compileMql5(mq5Path);
    if(StringFind(compileLog, "[Build Error]") >= 0 || StringFind(compileLog, "error:") >= 0 || fileExists(ex5Path) != "true")
    {
@@ -469,7 +469,7 @@ string Agent::runSubAgent(string prompt)
       return "Sub-agent compile failed:\n" + extractCompileErrors(compileLog);
    }
 
-   // Open new chart
+   // Open a new chart
    const long chartId = ChartOpen(_Symbol, PERIOD_CURRENT);
    if(chartId == 0)
    {
@@ -477,35 +477,23 @@ string Agent::runSubAgent(string prompt)
       fileDelete(mq5Path);
       return "Sub-agent failed: ChartOpen error " + (string)GetLastError() + ".";
    }
-   // Let chart initialize before attaching
-   Sleep(1000);
 
-   MqlParam prms[6];
-   prms[0].type          = TYPE_STRING;
-   prms[0].string_value  = SUBAGENT_EXE_FOLDER + id + ".ex5";
-
-   // Attach expert and verify presence
-   bool attached = false;
-   for(int attempt = 0; attempt < 10 && !attached; attempt++)
+   // Load the indicator by name and attach it to the new chart
+   int indHandle = INVALID_HANDLE;
+   for(int attempt = 0; attempt < 10 && indHandle == INVALID_HANDLE; attempt++)
    {
-      attached = (ChartGetString(chartId, CHART_EXPERT_NAME) != "");
-      if(!attached)
-      {
-         EXPERT::Run(chartId, prms);
-         attached = (ChartGetString(chartId, CHART_EXPERT_NAME) != "");
-      }
-      if(!attached)
+      indHandle = iCustom(_Symbol, PERIOD_CURRENT, id);
+      if(indHandle == INVALID_HANDLE)
          Sleep(500);
    }
-   if(!attached)
+   if(indHandle == INVALID_HANDLE || !ChartIndicatorAdd(chartId, 0, indHandle))
    {
-      const string ex5Status  = fileExists(ex5Path);
-      const string expertName = ChartGetString(chartId, CHART_EXPERT_NAME);
+      const string indStatus = fileExists(ex5Path);
       ChartClose(chartId);
       FileDelete(promptRel, FILE_COMMON);
       fileDelete(mq5Path);
       fileDelete(ex5Path);
-      return "Sub-agent failed: EXPERT::Run could not attach " + SUBAGENT_EXE_FOLDER + id + ".ex5 (ex5 exists: " + ex5Status + ", chart expert: '" + expertName + "', chart: " + (string)chartId + ").";
+      return "Sub-agent failed: could not add indicator " + id + " to the new chart (ex5 exists: " + indStatus + ", error: " + (string)GetLastError() + ").";
    }
 
    // Track for later collection
@@ -552,15 +540,18 @@ string Agent::pollSubAgent(string subAgentId)
    // Clean up artifacts
    FileDelete(responseRel, FILE_COMMON);
    FileDelete(SUBAGENT_FOLDER + "\\" + subAgentId + ".prompt.txt", FILE_COMMON);
-   fileDelete(TerminalInfoString(TERMINAL_DATA_PATH) + "\\MQL5\\" + SUBAGENT_EXE_FOLDER + subAgentId + ".mq5");
-   fileDelete(TerminalInfoString(TERMINAL_DATA_PATH) + "\\MQL5\\" + SUBAGENT_EXE_FOLDER + subAgentId + ".ex5");
-   fileDelete(TerminalInfoString(TERMINAL_DATA_PATH) + "\\MQL5\\" + SUBAGENT_EXE_FOLDER + subAgentId + ".log");
+   fileDelete(TerminalInfoString(TERMINAL_DATA_PATH) + "\\MQL5\\" + SUBAGENT_INDICATOR_FOLDER + subAgentId + ".mq5");
+   fileDelete(TerminalInfoString(TERMINAL_DATA_PATH) + "\\MQL5\\" + SUBAGENT_INDICATOR_FOLDER + subAgentId + ".ex5");
+   fileDelete(TerminalInfoString(TERMINAL_DATA_PATH) + "\\MQL5\\" + SUBAGENT_INDICATOR_FOLDER + subAgentId + ".log");
 
-   // Close sub-agent chart
+   // Detach sub-agent indicator and close its chart
    if(chartId != 0 && chartId != ChartID())
+   {
+      ChartIndicatorDelete(chartId, 0, subAgentId);
       ChartClose(chartId);
+   }
 
-   // Append to conversation
+// Append to conversation
    if(response != "")
    {
       pushMessage("user", "Sub-agent [" + subAgentId + "] result:\n" + response);
@@ -603,19 +594,24 @@ void Agent::collectSubAgents()
 }
 
 //+------------------------------------------------------------------+
-//| Generate the sub-agent .mq5 source                               |
+//| Generate the sub-agent indicator source                          |
 //+------------------------------------------------------------------+
-string Agent::buildSubAgentSource(string id, string apiKey, ENUM_LLM_PROVIDER providerId, ENUM_LLM_MODEL providerModel, string localUrl, ENUM_LLM_THINKING thinking)
+string Agent::buildSubAgentIndicatorSource(string id, string apiKey, ENUM_LLM_PROVIDER providerId, ENUM_LLM_MODEL providerModel, string localUrl, ENUM_LLM_THINKING thinking)
 {
    const string eKey = escapeMqlString(apiKey);
    const string eUrl = escapeMqlString(localUrl);
 
    string src = "";
    src += "//+------------------------------------------------------------------+\n";
-   src += "//| " + id + ".mq5 - generated sub-agent                          |\n";
+   src += "//| " + id + ".mq5 - generated sub-agent indicator                |\n";
    src += "//| Generated by Agent::runSubAgent. Do not edit manually.        |\n";
    src += "//+------------------------------------------------------------------+\n";
-   src += "#property strict\n\n";
+   src += "#property strict\n";
+   src += "#property indicator_chart_window\n";
+   src += "#property indicator_buffers 1\n";
+   src += "#property indicator_plots   1\n";
+   src += "#property indicator_type1   DRAW_NONE\n";
+   src += "#property indicator_label1  \"subagent\"\n\n";
    src += "#include <metatrader-ai\\mql\\agent.mqh>\n\n";
    src += "input string inpApiKey   = \"" + eKey + "\"; // API Key\n";
    src += "input int    inpProvider = " + (string)(int)providerId + "; // LLM Provider\n";
@@ -625,9 +621,30 @@ string Agent::buildSubAgentSource(string id, string apiKey, ENUM_LLM_PROVIDER pr
    src += "#define SUBAGENT_ID \"" + id + "\"\n";
    src += "#define SUBAGENT_PROMPT_FILE \"metatrader-ai\\\\subagents\\\\" + id + ".prompt.txt\"\n";
    src += "#define SUBAGENT_RESPONSE_FILE \"metatrader-ai\\\\subagents\\\\" + id + ".response.json\"\n\n";
-   src += "// Run once in OnInit then remove EA\n";
+   src += "double subBuf[];\n\n";
+   src += "//+------------------------------------------------------------------+\n";
    src += "int OnInit()\n";
    src += "{\n";
+   src += "   SetIndexBuffer(0, subBuf, INDICATOR_DATA);\n";
+   src += "   return INIT_SUCCEEDED;\n";
+   src += "}\n\n";
+   src += "//+------------------------------------------------------------------+\n";
+   src += "int OnCalculate(const int rates_total, const int prev_calculated, const datetime &time[], const double &open[], const double &high[], const double &low[], const double &close[], const long &tick_volume[], const long &volume[], const int &spread[])\n";
+   src += "{\n";
+   src += "   RunSubAgentWork();\n";
+   src += "   return rates_total;\n";
+   src += "}\n\n";
+   src += "//+------------------------------------------------------------------+\n";
+   src += "void OnDeinit(const int reason)\n";
+   src += "{\n";
+   src += "}\n\n";
+   src += "//+------------------------------------------------------------------+\n";
+   src += "void RunSubAgentWork()\n";
+   src += "{\n";
+   src += "   static bool done = false;\n";
+   src += "   if(done)\n";
+   src += "      return;\n";
+   src += "   done = true;\n\n";
    src += "   // Read parent prompt\n";
    src += "   string prompt = \"\";\n";
    src += "   int r = FileOpen(SUBAGENT_PROMPT_FILE, FILE_READ | FILE_TXT | FILE_ANSI | FILE_COMMON);\n";
@@ -640,6 +657,7 @@ string Agent::buildSubAgentSource(string id, string apiKey, ENUM_LLM_PROVIDER pr
    src += "      }\n";
    src += "      FileClose(r);\n";
    src += "   }\n\n";
+   src += "   PrintFormat(\"[SubAgent] prompt length: %d\", StringLen(prompt));\n\n";
    src += "   string response = \"\";\n";
    src += "   string sessionName = \"\";\n";
    src += "   Agent *sub = new Agent(inpApiKey, (ENUM_LLM_PROVIDER)inpProvider, (ENUM_LLM_MODEL)inpModel, inpLocalUrl, (ENUM_LLM_THINKING)inpThinking);\n";
@@ -651,6 +669,7 @@ string Agent::buildSubAgentSource(string id, string apiKey, ENUM_LLM_PROVIDER pr
    src += "   }\n";
    src += "   else\n";
    src += "      response = \"Sub-agent failed: could not create Agent (error \" + (string)GetLastError() + \")\";\n\n";
+   src += "   PrintFormat(\"[SubAgent] response (%d chars): %s\", StringLen(response), response);\n\n";
    src += "   // Write result file\n";
    src += "   CJAVal result;\n";
    src += "   result[\"subagent_id\"] = SUBAGENT_ID;\n";
@@ -662,13 +681,7 @@ string Agent::buildSubAgentSource(string id, string apiKey, ENUM_LLM_PROVIDER pr
    src += "   {\n";
    src += "      FileWriteString(w, result.Serialize());\n";
    src += "      FileClose(w);\n";
-   src += "   }\n\n";
-   src += "   ExpertRemove();\n";
-   src += "   return INIT_SUCCEEDED;\n";
-   src += "}\n\n";
-   src += "//+------------------------------------------------------------------+\n";
-   src += "void OnDeinit(const int reason)\n";
-   src += "{\n";
+   src += "   }\n";
    src += "}\n";
    src += "//+------------------------------------------------------------------+\n";
 
