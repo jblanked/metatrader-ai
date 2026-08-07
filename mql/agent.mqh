@@ -477,6 +477,8 @@ string Agent::runSubAgent(string prompt)
       fileDelete(mq5Path);
       return "Sub-agent failed: ChartOpen error " + (string)GetLastError() + ".";
    }
+   // Let chart initialize before attaching
+   Sleep(1000);
 
    MqlParam prms[6];
    prms[0].type          = TYPE_STRING;
@@ -492,24 +494,28 @@ string Agent::runSubAgent(string prompt)
    prms[5].type          = TYPE_INT;
    prms[5].integer_value = (int)m_thinking;
 
-   // Attach on the new chart; retry while MetaTrader indexes the new .ex5
+   // Attach expert and verify presence
    bool attached = false;
-   for(int attempt = 0; attempt < 5 && !attached; attempt++)
+   for(int attempt = 0; attempt < 10 && !attached; attempt++)
    {
-      attached = EXPERT::Run(chartId, prms);
-      if(attached)
+      attached = (ChartGetString(chartId, CHART_EXPERT_NAME) != "");
+      if(!attached)
+      {
+         EXPERT::Run(chartId, prms);
          attached = (ChartGetString(chartId, CHART_EXPERT_NAME) != "");
+      }
       if(!attached)
          Sleep(500);
    }
    if(!attached)
    {
-      const string ex5Status = fileExists(ex5Path);
+      const string ex5Status  = fileExists(ex5Path);
+      const string expertName = ChartGetString(chartId, CHART_EXPERT_NAME);
       ChartClose(chartId);
       FileDelete(promptRel, FILE_COMMON);
       fileDelete(mq5Path);
       fileDelete(ex5Path);
-      return "Sub-agent failed: EXPERT::Run could not attach " + SUBAGENT_EXE_FOLDER + id + ".ex5 (ex5 exists: " + ex5Status + ").";
+      return "Sub-agent failed: EXPERT::Run could not attach " + SUBAGENT_EXE_FOLDER + id + ".ex5 (ex5 exists: " + ex5Status + ", chart expert: '" + expertName + "', chart: " + (string)chartId + ").";
    }
 
    // Track for later collection
@@ -629,16 +635,9 @@ string Agent::buildSubAgentSource(string id, string apiKey, ENUM_LLM_PROVIDER pr
    src += "#define SUBAGENT_ID \"" + id + "\"\n";
    src += "#define SUBAGENT_PROMPT_FILE \"metatrader-ai\\\\subagents\\\\" + id + ".prompt.txt\"\n";
    src += "#define SUBAGENT_RESPONSE_FILE \"metatrader-ai\\\\subagents\\\\" + id + ".response.json\"\n\n";
-   src += "// Defer work to the timer\n";
+   src += "// Run once in OnInit then remove EA\n";
    src += "int OnInit()\n";
    src += "{\n";
-   src += "   EventSetMillisecondTimer(1);\n";
-   src += "   return INIT_SUCCEEDED;\n";
-   src += "}\n\n";
-   src += "// Run once then remove EA\n";
-   src += "void OnTimer()\n";
-   src += "{\n";
-   src += "   EventKillTimer();\n\n";
    src += "   // Read parent prompt\n";
    src += "   string prompt = \"\";\n";
    src += "   int r = FileOpen(SUBAGENT_PROMPT_FILE, FILE_READ | FILE_TXT | FILE_ANSI | FILE_COMMON);\n";
@@ -675,11 +674,11 @@ string Agent::buildSubAgentSource(string id, string apiKey, ENUM_LLM_PROVIDER pr
    src += "      FileClose(w);\n";
    src += "   }\n\n";
    src += "   ExpertRemove();\n";
+   src += "   return INIT_SUCCEEDED;\n";
    src += "}\n\n";
    src += "//+------------------------------------------------------------------+\n";
    src += "void OnDeinit(const int reason)\n";
    src += "{\n";
-   src += "   EventKillTimer();\n";
    src += "}\n";
    src += "//+------------------------------------------------------------------+\n";
 
