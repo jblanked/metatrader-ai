@@ -69,6 +69,7 @@ private:
    void              collectSubAgents();                                     // Drain finished sub-agents
    string            buildSubAgentSource(string id, string apiKey, ENUM_LLM_PROVIDER providerId, ENUM_LLM_MODEL providerModel, string localUrl, ENUM_LLM_THINKING thinking); // Generate sub-agent source
    string            escapeMqlString(string value);                          // Escape for MQL literal
+   string            extractCompileErrors(string log);                       // Extract error lines from log
    void              setThinking(CJAVal& payload);                           // Set the "thinking" parameter in the payload
 };
 
@@ -206,7 +207,7 @@ string Agent::run(string prompt)
    if(!hasSession())
       newSession();
 
-// Append finished sub-agent results
+   // Append finished sub-agent results
    collectSubAgents();
 
    pushMessage("user", prompt);
@@ -430,7 +431,7 @@ bool Agent::historyMessage(int i, string &role, string &content)
 string Agent::runSubAgent(string prompt)
 {
 #ifdef __MQL5__
-// Gather inputs
+   // Gather inputs
    const string id = StringFormat("subagent_%I64d_%d", (long)TimeCurrent(), (int)GetTickCount());
 
    if(!FolderCreate(SUBAGENT_FOLDER, FILE_COMMON))
@@ -440,7 +441,7 @@ string Agent::runSubAgent(string prompt)
    const string promptRel  = SUBAGENT_FOLDER + "\\" + id + ".prompt.txt";
    const string ex5Rel     = SUBAGENT_FOLDER + "\\" + id + ".ex5";
 
-// Save prompt file
+   // Save prompt file
    FileDelete(promptRel, FILE_COMMON);
    int ph = FileOpen(promptRel, FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON);
    if(ph == INVALID_HANDLE)
@@ -448,7 +449,7 @@ string Agent::runSubAgent(string prompt)
    FileWriteString(ph, prompt);
    FileClose(ph);
 
-// Write generated script
+   // Write generated script
    const string source = buildSubAgentSource(id, m_apiKey, m_providerId, m_providerModel, m_llm.url, m_thinking);
    FileDelete(mq5Rel, FILE_COMMON);
    int sh = FileOpen(mq5Rel, FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON);
@@ -460,16 +461,16 @@ string Agent::runSubAgent(string prompt)
    FileWriteString(sh, source);
    FileClose(sh);
 
-// Compile script
+   // Compile script
    const string compileLog = compileMql5(COMMON_FOLDER + mq5Rel);
-   if(StringFind(compileLog, "[Build Error]") >= 0 || StringFind(compileLog, "0 error") < 0)
+   if(StringFind(compileLog, "[Build Error]") >= 0 || StringFind(compileLog, "error:") >= 0)
    {
       FileDelete(promptRel, FILE_COMMON);
       FileDelete(mq5Rel, FILE_COMMON);
-      return "Sub-agent compile failed:\n" + compileLog;
+      return "Sub-agent compile failed:\n" + extractCompileErrors(compileLog);
    }
 
-// Move to Scripts folder
+   // Move to Scripts folder
    const string scriptsFolder = TerminalInfoString(TERMINAL_DATA_PATH) + "\\MQL5\\" + SUBAGENT_EXE_FOLDER;
    if(fileMove(COMMON_FOLDER + ex5Rel, scriptsFolder) != "true")
    {
@@ -478,7 +479,7 @@ string Agent::runSubAgent(string prompt)
       return "Sub-agent failed: could not move " + id + ".ex5 into the Scripts folder.";
    }
 
-// Open new chart
+   // Open new chart
    const long chartId = ChartOpen(_Symbol, PERIOD_CURRENT);
    if(chartId == 0)
    {
@@ -510,14 +511,14 @@ string Agent::runSubAgent(string prompt)
       return "Sub-agent failed: EXPERT::Run could not attach the sub-agent to the new chart.";
    }
 
-// Track for later collection
+   // Track for later collection
    int pendingCount = ArraySize(m_pendingSubAgents);
    ArrayResize(m_pendingSubAgents, pendingCount + 1);
    m_pendingSubAgents[pendingCount] = id;
 
    Print("[Agent] Launched sub-agent ", id, " on chart ", chartId);
 
-// Return session id
+   // Return session id
    return id;
 #else
    return "Sub-agents require MetaTrader 5.";
@@ -551,17 +552,17 @@ string Agent::pollSubAgent(string subAgentId)
    const long   chartId    = (long)res["chart_id"].ToInt();
    const string subSession = res["session"].ToStr();
 
-// Clean up artifacts
+   // Clean up artifacts
    FileDelete(responseRel, FILE_COMMON);
    FileDelete(SUBAGENT_FOLDER + "\\" + subAgentId + ".mq5", FILE_COMMON);
    FileDelete(SUBAGENT_FOLDER + "\\" + subAgentId + ".prompt.txt", FILE_COMMON);
    fileDelete(TerminalInfoString(TERMINAL_DATA_PATH) + "\\MQL5\\" + SUBAGENT_EXE_FOLDER + subAgentId + ".ex5");
 
-// Close sub-agent chart
+   // Close sub-agent chart
    if(chartId != 0 && chartId != ChartID())
       ChartClose(chartId);
 
-// Append to conversation
+   // Append to conversation
    if(response != "")
    {
       pushMessage("user", "Sub-agent [" + subAgentId + "] result:\n" + response);
@@ -718,6 +719,28 @@ string Agent::escapeMqlString(string value)
          break;
       }
    }
+   return out;
+}
+
+//+------------------------------------------------------------------+
+//| Extract error and warning lines from a compile log               |
+//+------------------------------------------------------------------+
+string Agent::extractCompileErrors(string log)
+{
+   string out = "";
+   string lines[];
+   const int count = StringSplit(log, '\n', lines);
+   for(int i = 0; i < count; i++)
+   {
+      string line = lines[i];
+      StringTrimLeft(line);
+      StringTrimRight(line);
+      if(line == "") continue;
+      if(StringFind(line, "error:") >= 0 || StringFind(line, "warning:") >= 0 || StringFind(line, "error(s)") >= 0 || StringFind(line, "warning(s)") >= 0)
+         out += line + "\n";
+   }
+   if(out == "")
+      out = "(no error details in compile log)";
    return out;
 }
 
