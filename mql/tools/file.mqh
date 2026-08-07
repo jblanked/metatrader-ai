@@ -24,6 +24,7 @@ int ShellExecuteW(int hWnd, string lpOperation, string lpFile, string lpParamete
 string fileCopy(const string src, const string dest);
 string fileDelete(const string path);
 string fileExists(const string path);
+string fileList(const string folder, const string key = "", const string ext = "", const bool recursive = false);
 string fileMove(const string src, const string dest);
 string fileRead(const string path);
 string fileWrite(const string path, char &data[], int index = 0, bool overwrite = true);
@@ -103,6 +104,71 @@ string fileMove(const string src, const string dest)
 {
    const int result = ShellExecuteW(0, "open", "cmd.exe", ("/C move /Y \"" + src + "\" \"" + dest + "\""), NULL, 0);
    return FILE_RETURN(result);
+}
+
+//+------------------------------------------------------------------+
+//| List files in a folder optionally matching key and extension     |
+//+------------------------------------------------------------------+
+string fileList(const string folder, const string key = "", const string ext = "", const bool recursive = false)
+{
+   const string tempName   = "flist_" + (string)GetTickCount() + ".txt";
+   const string tempRel    = "metatrader-ai\\temp\\" + tempName;
+   const string commonPath = FILE_COMMON_FOLDER + tempRel;
+   if(!::FolderCreate("metatrader-ai", FILE_COMMON) || !::FolderCreate(FILE_TEMP_FOLDER, FILE_COMMON))
+   {
+      FILE_PRINT_RETURN("Failed to create temporary list folder");
+   }
+
+   // Build the file name filter: "*<key>*<ext>"
+   string filter = "*";
+   if(key != "") filter += key;
+   filter += "*";
+   if(ext != "")
+   {
+      if(StringSubstr(ext, 0, 1) != ".") filter += ".";
+      filter += ext;
+   }
+
+   const string recurse = recursive ? " -Recurse" : "";
+   const string cmd = "-NoProfile -Command \"" +
+      "if(Test-Path -LiteralPath '" + folder + "' -PathType Container){ " +
+      "Get-ChildItem -LiteralPath '" + folder + "' -File -Filter '" + filter + "'" + recurse +
+      " | ForEach-Object { $_.FullName } } | Out-File -FilePath '" + commonPath + "' -Encoding ascii -Force\"";
+   const int shellResult = ShellExecuteW(0, "open", "powershell.exe", cmd, NULL, 0);
+   if(shellResult <= 32)
+   {
+      FILE_PRINT_RETURN("Failed to run powershell, error: " + (string)shellResult);
+   }
+
+   for(int i = 0; i < 30; i++)
+   {
+      Sleep(100);
+      if(::FileIsExist(tempRel, FILE_COMMON)) break;
+   }
+
+   int handle = ::FileOpen(tempRel, FILE_READ | FILE_COMMON | FILE_TXT | FILE_ANSI);
+   if(handle == INVALID_HANDLE)
+   {
+      FILE_PRINT_RETURN("Failed to open list file! error: " + (string)GetLastError());
+   }
+
+   CJAVal result;
+   result.m_type = jtARRAY;
+   while(!::FileIsEnding(handle))
+   {
+      string line = ::FileReadString(handle);
+      StringTrimLeft(line);
+      StringTrimRight(line);
+      if(line != "")
+      {
+         result.Add(line);
+      }
+   }
+   ::FileClose(handle);
+
+   ::FileDelete(tempRel, FILE_COMMON);
+
+   return result.Serialize();
 }
 
 //+------------------------------------------------------------------+

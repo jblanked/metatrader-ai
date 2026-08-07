@@ -76,6 +76,7 @@ public:
       add(new ToolFileCopy());
       add(new ToolFileDelete());
       add(new ToolFileExists());
+      add(new ToolFileList());
       add(new ToolFileMove());
       add(new ToolFileRead());
       add(new ToolFileWrite());

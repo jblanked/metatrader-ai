@@ -976,6 +976,26 @@ Tool TOOL_FILE_WRITE(
    toolFileWriteParams()
 );
 //+------------------------------------------------------------------+
+//| Parameters for file_list                                         |
+//+------------------------------------------------------------------+
+Parameters *toolFileListParams(void)
+{
+   Parameters *p = new Parameters();
+   p.add(new Property("folder",    "string",  "Folder path to list files from (must be a full path, including drive and directories)", true));
+   p.add(new Property("key",       "string",  "Optional filter: only list files whose name contains this key", false));
+   p.add(new Property("ext",       "string",  "Optional filter: only list files with this extension (e.g. \"mqh\" or \".mqh\")", false));
+   p.add(new Property("recursive", "boolean", "Whether to list files in subfolders too", false));
+   return p;
+}
+//+------------------------------------------------------------------+
+//| File list tool                                                   |
+//+------------------------------------------------------------------+
+Tool TOOL_FILE_LIST(
+   "file_list",
+   "List files in a folder, optionally matching a name key and/or extension.",
+   toolFileListParams()
+);
+//+------------------------------------------------------------------+
 //| Parameters for get_terminal_info                                 |
 //+------------------------------------------------------------------+
 Parameters *toolGetTerminalInfoParams(void)
