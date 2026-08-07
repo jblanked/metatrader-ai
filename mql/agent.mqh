@@ -502,8 +502,8 @@ string Agent::runSubAgent(string prompt)
          string gotUrl    = "";
          for(int i = 0; i < ArraySize(names); i++)
          {
-            if(names[i] == "inpPromptFile") gotPrompt = params[i].string_value;
-            if(names[i] == "inpLocalUrl")   gotUrl    = params[i].string_value;
+            if(names[i] == "inpPromptFile") gotPrompt = params[i + 1].string_value;
+            if(names[i] == "inpLocalUrl")   gotUrl    = params[i + 1].string_value;
          }
          if(gotPrompt == promptRel && gotUrl == m_llm.url)
             verified = true;
