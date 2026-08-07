@@ -8,6 +8,7 @@
 #property strict
 
 #include "llm.mqh"
+#include "session.mqh"
 #include "tools/mt5.mqh"
 #include "tools/dispatch.mqh"
 #include "tools/requests.mqh"
@@ -19,33 +20,41 @@
 class Agent
 {
 public:
-   Agent(
-      string apiKey, 
-      const ENUM_LLM_PROVIDER providerId = LLM_PROVIDER_DEEPSEEK, 
+                     Agent(
+      string apiKey,
+      const ENUM_LLM_PROVIDER providerId = LLM_PROVIDER_DEEPSEEK,
       const int providerModel = LLM_MODEL_DEEPSEEK_V4_FLASH,
       const string localUrl = "http://127.0.0.1:8080/v1/chat/completions",
       const ENUM_LLM_THINKING thinking = LLM_THINKING_MEDIUM
-   );  // Constructor
-   ~Agent();                  // Deconstructor
-   void reset();              // Clear conversation history while preserving the system message
-   string run(string prompt); // Process one user turn and return the assistant's final text response
+   );                                                                      // Constructor
+                    ~Agent();                                              // Deconstructor
+   void              reset();                                              // Clear conversation history while preserving the system message
+   string            run(string prompt);                                   // Process one user turn and return the assistant's final text response
+   bool              hasSession();                                         // True when an active session exists
+   string            newSession();                                         // Start a new session and reset history
+   bool              loadSession(string name);                             // Load a saved session into history
+   void              saveSession();                                        // Persist the current conversation
+   int               historyCount();                                       // Number of conversation messages
+   bool              historyMessage(int i, string &role, string &content); // Read a conversation entry
 
 private:
-   CJAVal    m_messages;        // persistent conversation history (jtARRAY)
-   Dispatch *m_dispatch;        // tool dispatcher
-   string    m_headers;         // Content-Type + Authorization headers
-   bool      m_initialized;     // is initialized
-   string    m_deferredImageMsg;// user-role image message deferred until after all tool results
-   LLM       m_llm;             // LLM configuration
-   string    m_apiKey;          // API key
+   CJAVal            m_messages;        // persistent conversation history (jtARRAY)
+   Dispatch          *m_dispatch;       // tool dispatcher
+   string            m_headers;         // Content-Type + Authorization headers
+   bool              m_initialized;     // is initialized
+   string            m_deferredImageMsg;// user-role image message deferred until after all tool results
+   LLM               m_llm;             // LLM configuration
+   string            m_apiKey;          // API key
+   Session           *m_session;        // current session
 
-   string loadContextFiles();                                   // Read and concatenate all CONTEXT_FILES
-   bool initialize();                                           // Load system prompt and context files
-   void pushMessage(string role, string content);               // Append a standard role/content message
-   void pushRaw(string serialized);                             // Append a pre-serialized JSON object (used for assistant messages with tool_calls)
-   void pushToolResult(string toolCallId, string content);      // Append a tool result message
-   void pushToolResultImage(string toolCallId, string b64data); // Append a tool result image
-   void setThinking(CJAVal& payload);                           // Set the "thinking" parameter in the payload 
+   string            loadContextFiles();                                     // Read and concatenate all CONTEXT_FILES
+   bool              initialize();                                           // Load system prompt and context files
+   bool              hasConversation();                                      // True when history holds a user/assistant turn
+   void              pushMessage(string role, string content);               // Append a standard role/content message
+   void              pushRaw(string serialized);                             // Append a pre-serialized JSON object (used for assistant messages with tool_calls)
+   void              pushToolResult(string toolCallId, string content);      // Append a tool result message
+   void              pushToolResultImage(string toolCallId, string b64data); // Append a tool result image
+   void              setThinking(CJAVal& payload);                           // Set the "thinking" parameter in the payload
 };
 
 //+------------------------------------------------------------------+
@@ -62,6 +71,7 @@ Agent::Agent(string apiKey, const ENUM_LLM_PROVIDER providerId, const int provid
    if(m_llm.id != "local")
       m_headers += "Authorization: Bearer " + m_apiKey;
    m_deferredImageMsg = "";
+   m_session = new Session(false, false);
 #ifdef __MQL4__
    if(!FolderCreate("metatrader-ai", FILE_COMMON)) Print("Failed to create metatrader-ai folder");
    if(!FolderCreate("metatrader-ai\\context", FILE_COMMON)) Print("Failed to create metatrader-ai\\context folder");
@@ -78,6 +88,11 @@ Agent::~Agent()
    {
       delete m_dispatch;
       m_dispatch = NULL;
+   }
+   if (CheckPointer(m_session) == POINTER_DYNAMIC)
+   {
+      delete m_session;
+      m_session = NULL;
    }
 }
 
@@ -169,6 +184,8 @@ string Agent::run(string prompt)
       m_initialized = initialize();
       if(!m_initialized) return "Failed to initialize context.";
    }
+   if(!hasSession())
+      newSession();
    pushMessage("user", prompt);
 
    CJAVal toolList;
@@ -208,6 +225,7 @@ string Agent::run(string prompt)
       {
          string content = message["content"].ToStr();
          pushMessage("assistant", content);
+         saveSession();
          return content;
       }
 
@@ -268,6 +286,119 @@ void Agent::reset()
       systemMsg.Deserialize(systemMsgStr);
       m_messages.Add(systemMsg);
    }
+}
+
+//+------------------------------------------------------------------+
+//| True when an active session exists                               |
+//+------------------------------------------------------------------+
+bool Agent::hasSession()
+{
+   return CheckPointer(m_session) == POINTER_DYNAMIC && m_session.active();
+}
+
+//+------------------------------------------------------------------+
+//| Start a new session and reset history to the system message      |
+//+------------------------------------------------------------------+
+string Agent::newSession()
+{
+   saveSession();
+   if(CheckPointer(m_session) == POINTER_DYNAMIC)
+   {
+      delete m_session;
+      m_session = NULL;
+   }
+   m_session = new Session(true, false);
+   reset();
+   return m_session.name;
+}
+
+//+------------------------------------------------------------------+
+//| Load a saved session into the live history                       |
+//+------------------------------------------------------------------+
+bool Agent::loadSession(string name)
+{
+   saveSession();
+
+   Session *loaded = new Session(false, false);
+   if(!loaded.load(name))
+   {
+      delete loaded;
+      return false;
+   }
+
+   string systemMsgStr = "";
+   if(ArraySize(m_messages.m_e) > 0 && m_messages[0]["role"].ToStr() == "system")
+      systemMsgStr = m_messages[0].Serialize();
+
+   m_messages.Clear();
+   m_messages.m_type = jtARRAY;
+
+   if(systemMsgStr != "" && (ArraySize(loaded.messages.m_e) == 0 || loaded.messages[0]["role"].ToStr() != "system"))
+   {
+      CJAVal sys;
+      sys.Deserialize(systemMsgStr);
+      m_messages.Add(sys);
+   }
+   int n = ArraySize(loaded.messages.m_e);
+   for(int i = 0; i < n; i++)
+      m_messages.Add(loaded.messages[i]);
+
+   if(CheckPointer(m_session) == POINTER_DYNAMIC)
+   {
+      delete m_session;
+      m_session = NULL;
+   }
+   m_session = loaded;
+   return true;
+}
+
+//+------------------------------------------------------------------+
+//| Persist the current conversation to the active session           |
+//+------------------------------------------------------------------+
+void Agent::saveSession()
+{
+   if(CheckPointer(m_session) != POINTER_DYNAMIC) return;
+   if(!m_session.active()) return;
+   if(!hasConversation()) return;
+
+   m_session.messages.Clear();
+   m_session.messages.m_type = jtARRAY;
+   m_session.messages.Set(m_messages);
+   m_session.save();
+}
+
+//+------------------------------------------------------------------+
+//| True when history holds at least one user or assistant turn      |
+//+------------------------------------------------------------------+
+bool Agent::hasConversation()
+{
+   int n = ArraySize(m_messages.m_e);
+   for(int i = 0; i < n; i++)
+   {
+      string role = m_messages[i]["role"].ToStr();
+      if(role == "user" || role == "assistant")
+         return true;
+   }
+   return false;
+}
+
+//+------------------------------------------------------------------+
+//| Number of messages in the live history                           |
+//+------------------------------------------------------------------+
+int Agent::historyCount()
+{
+   return ArraySize(m_messages.m_e);
+}
+
+//+------------------------------------------------------------------+
+//| Read a history entry into role/content                           |
+//+------------------------------------------------------------------+
+bool Agent::historyMessage(int i, string &role, string &content)
+{
+   if(i < 0 || i >= ArraySize(m_messages.m_e)) return false;
+   role = m_messages[i]["role"].ToStr();
+   content = m_messages[i]["content"].ToStr();
+   return true;
 }
 
 //+------------------------------------------------------------------+

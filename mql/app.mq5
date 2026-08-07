@@ -53,8 +53,6 @@ int OnInit()
       return INIT_FAILED;
    }
 
-   panel.AddMessage("assistant", "Hello! I'm your AI trading assistant. Ask me anything about your positions, market analysis, or trading strategies.");
-
    return INIT_SUCCEEDED;
 }
 //+------------------------------------------------------------------+
@@ -105,9 +103,9 @@ void OnTimer()
 //+------------------------------------------------------------------+
 struct ChatMessage
 {
-   string role;    // "user" or "assistant"
-   string content; // message text
-   string time;    // timestamp string
+   string            role;    // "user" or "assistant"
+   string            content; // message text
+   string            time;    // timestamp string
 };
 
 //+------------------------------------------------------------------+
@@ -117,101 +115,127 @@ class AIPanel : public CPanelDraw
 {
 private:
    // Tab state
-   bool            m_isChatTab;
-   bool            m_initialized;
+   bool              m_isChatTab;
+   bool              m_isInfoTab;
+   bool              m_isSessionTab;
+   bool              m_initialized;
 
    // Tab buttons
-   CButton         m_btnChat;
-   CButton         m_btnInfo;
+   CButton           m_btnChat;
+   CButton           m_btnInfo;
+   CButton           m_btnSession;
 
    // Chat components
-   CLabel          *m_msgLabels[];     // array of message label pointers
-   int             m_msgLabelCount;    // number of allocated message labels
-   ChatMessage     m_messages[];       // message storage
-   int             m_messageCount;     // number of stored messages
-   int             m_scrollOffset;     // pixel scroll offset for chat area
+   CLabel            *m_msgLabels[];     // array of message label pointers
+   int               m_msgLabelCount;    // number of allocated message labels
+   ChatMessage       m_messages[];       // message storage
+   int               m_messageCount;     // number of stored messages
+   int               m_scrollOffset;     // pixel scroll offset for chat area
+
+   // Session tab components
+   CButton           m_btnNewSession;
+   CButton           *m_sessionBtns[];
+   int               m_sessionBtnCount;
+   string            m_sessionNames[];
+   int               m_sessionScrollOffset;
+   int               m_sessionTotalHeight;
+   int               m_sessionListTop;
 
    // Info tab labels
-   CLabel          *m_infoLabels[];    // info display labels
-   int             m_infoLabelCount;   // number of info labels
+   CLabel            *m_infoLabels[];    // info display labels
+   int               m_infoLabelCount;   // number of info labels
 
    // Input components
-   CEdit           m_txtInput;
-   CButton         m_btnSend;
-   CButton         m_btnScrollUp;
-   CButton         m_btnScrollDown;
+   CEdit             m_txtInput;
+   CButton           m_btnSend;
+   CButton           m_btnCopy;
+   CButton           m_btnScrollUp;
+   CButton           m_btnScrollDown;
+   int               m_copyBtnW;
+   int               m_copyFlashCounter;
 
    // Agent
-   Agent           *m_agent;
+   Agent             *m_agent;
 
    // Layout constants
-   int             m_tabHeight;
-   int             m_inputAreaHeight;
-   int             m_margin;
-   int             m_msgSpacing;
-   int             m_chatTop;
-   int             m_chatBottom;
-   int             m_chatHeight;
+   int               m_tabHeight;
+   int               m_inputAreaHeight;
+   int               m_margin;
+   int               m_msgSpacing;
+   int               m_chatTop;
+   int               m_chatBottom;
+   int               m_chatHeight;
 
    // Colors
-   color           m_clrBg;
-   color           m_clrUserBubble;
-   color           m_clrAiBubble;
-   color           m_clrUserText;
-   color           m_clrAiText;
-   color           m_clrTabActive;
-   color           m_clrTabInactive;
-   color           m_clrTabText;
-   color           m_clrInputBg;
-   color           m_clrSendBtn;
-   color           m_clrSendText;
-   color           m_clrAccent;
-   color           m_clrBorder;
+   color             m_clrBg;
+   color             m_clrUserBubble;
+   color             m_clrAiBubble;
+   color             m_clrUserText;
+   color             m_clrAiText;
+   color             m_clrTabActive;
+   color             m_clrTabInactive;
+   color             m_clrTabText;
+   color             m_clrInputBg;
+   color             m_clrSendBtn;
+   color             m_clrSendText;
+   color             m_clrAccent;
+   color             m_clrBorder;
 
    // DPI
-   int             m_dpi;
-   double          m_dpiScale;
+   int               m_dpi;
+   double            m_dpiScale;
 
    // Internal
-   string          m_panelName;
-   int             m_tickCounter;      // tick counter for info refresh
-   bool            m_requestPending;   // waiting for AI response
-   string          m_pendingMsg;       // last sent message (for display)
-   bool            m_inputFocused;     // true when chat input is focused
-   string          m_inputBuffer;      // buffered input text (can exceed native edit limit)
-   string          m_localClipboard;   // internal clipboard fallback for copy/paste
-   int             m_inputCursorPos;   // insertion point inside input buffer
-   bool            m_shiftDown;        // shift key pressed state
-   bool            m_ctrlDown;         // control key pressed state
-   bool            m_altDown;          // alt/menu key pressed state
-   int             m_inputMaxChars;    // hard cap for user input
-   int             m_chatTotalHeight;  // total rendered height of chat messages
-   int             m_infoScrollOffset; // scroll offset for info tab
-   int             m_infoTotalHeight;  // total content height of info tab
+   string            m_panelName;
+   int               m_tickCounter;      // tick counter for info refresh
+   bool              m_requestPending;   // waiting for AI response
+   string            m_pendingMsg;       // last sent message (for display)
+   bool              m_inputFocused;     // true when chat input is focused
+   string            m_inputBuffer;      // buffered input text (can exceed native edit limit)
+   string            m_localClipboard;   // internal clipboard fallback for copy/paste
+   int               m_inputCursorPos;   // insertion point inside input buffer
+   bool              m_shiftDown;        // shift key pressed state
+   bool              m_ctrlDown;         // control key pressed state
+   bool              m_altDown;          // alt/menu key pressed state
+   int               m_inputMaxChars;    // hard cap for user input
+   int               m_chatTotalHeight;  // total rendered height of chat messages
+   int               m_infoScrollOffset; // scroll offset for info tab
+   int               m_infoTotalHeight;  // total content height of info tab
 
    // Private helpers
-   void            DestroyMessageLabels();
-   void            UpdateChatVisibility(bool show);
-   void            UpdateInfoVisibility(bool show);
-   void            SwitchToChat();
-   void            SwitchToInfo();
-   void            RenderMessages();
-   void            ClearInfoLabels();
-   void            PopulateInfoTab();
-   void            SendCurrentMessage();
-   void            RefreshInputText();
-   void            InsertTextAtCursor(string text);
-   bool            HandleInputKey(const long keyCode);
-   string          KeyCodeToChar(const int keyCode, const bool shiftPressed);
-   void            SetModifierKeyState(const int keyCode, const bool down);
-   string          FormatTimestamp();
-   int             MaxCharsPerLine();
-   void            WrapText(string text, int maxChars, string &lines[], int &lineCount);
-   void            AddInfoRow(int &yPos, int col1X, int col1W, int col2X, int col2W, int labelH, bool isHeader, string key, string val);
+   void              DestroyMessageLabels();
+   void              DestroySessionButtons();
+   void              UpdateChatVisibility(bool show);
+   void              UpdateInfoVisibility(bool show);
+   void              UpdateSessionVisibility(bool show);
+   void              SwitchToChat();
+   void              SwitchToInfo();
+   void              SwitchToSession();
+   void              RenderMessages();
+   void              ClearInfoLabels();
+   void              PopulateInfoTab();
+   void              RefreshSessionList();
+   void              SendCurrentMessage();
+   void              NewSession();
+   void              LoadSession(string name);
+   void              ClearChatMessages();
+   void              AppendMessage(string role, string content);
+   void              LoadConversationFromAgent();
+   void              CopyConversation();
+   string            SessionDisplayName(string name);
+   void              RefreshInputText();
+   void              InsertTextAtCursor(string text);
+   bool              HandleInputKey(const long keyCode);
+   string            KeyCodeToChar(const int keyCode, const bool shiftPressed);
+   void              SetModifierKeyState(const int keyCode, const bool down);
+   string            FormatTimestamp();
+   int               MaxCharsPerLine();
+   void              WrapText(string text, int maxChars, string &lines[], int &lineCount);
+   void              AddInfoRow(int &yPos, int col1X, int col1W, int col2X, int col2W, int labelH, bool isHeader, string key, string val);
 
 public:
    // Constructor / Destructor
-   AIPanel(
+                     AIPanel(
       const string name,
       const int x1 = 0,
       const int y1 = 0,
@@ -219,30 +243,30 @@ public:
       const int y2 = NULL,
       const int subWindow = 0
    );
-   ~AIPanel();
+                    ~AIPanel();
 
    // Overrides
-   bool            CreatePanel();
-   virtual bool    OnResize(void);
-   void            PanelChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam);
-   void            OnTickUpdate();
+   bool              CreatePanel();
+   virtual bool      OnResize(void);
+   void              PanelChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam);
+   void              OnTickUpdate();
 
    // Public methods
-   void            AddMessage(string role, string content);
-   void            RefreshInfo();
-   void            SetAgent(Agent *ag)
+   void              AddMessage(string role, string content);
+   void              RefreshInfo();
+   void              SetAgent(Agent *ag)
    {
       m_agent = ag;
    }
-   bool            IsRequestPending()
+   bool              IsRequestPending()
    {
       return m_requestPending;
    }
-   string          GetPendingMessage()
+   string            GetPendingMessage()
    {
       return m_pendingMsg;
    }
-   void            CompletePending(const string response);
+   void              CompletePending(const string response);
 };
 
 //+------------------------------------------------------------------+
@@ -258,6 +282,8 @@ AIPanel::AIPanel(
 ) : CPanelDraw(name, x1, y1, x2, y2, subWindow)
 {
    m_isChatTab       = true;
+   m_isInfoTab       = false;
+   m_isSessionTab    = false;
    m_initialized     = false;
    m_messageCount    = 0;
    m_msgLabelCount   = 0;
@@ -278,11 +304,17 @@ AIPanel::AIPanel(
    m_chatTotalHeight = 0;
    m_infoScrollOffset = 0;
    m_infoTotalHeight = 0;
+   m_sessionBtnCount = 0;
+   m_sessionScrollOffset = 0;
+   m_sessionTotalHeight = 0;
+   m_sessionListTop  = 0;
+   m_copyFlashCounter = 0;
 
 // DPI scaling
    m_dpi             = (int)TerminalInfoInteger(TERMINAL_SCREEN_DPI);
    if(m_dpi < 96) m_dpi = 96;
    m_dpiScale        = (double)m_dpi / 96.0;
+   m_copyBtnW        = (int)(55 * m_dpiScale);
 
 // Layout constants
    m_tabHeight       = (int)(28 * m_dpiScale);
@@ -313,6 +345,7 @@ AIPanel::AIPanel(
 AIPanel::~AIPanel()
 {
    DestroyMessageLabels();
+   DestroySessionButtons();
    ClearInfoLabels();
 }
 
@@ -348,6 +381,23 @@ void AIPanel::ClearInfoLabels()
    }
    ArrayResize(m_infoLabels, 0);
    m_infoLabelCount = 0;
+}
+
+//+------------------------------------------------------------------+
+//| Destroy session buttons                                          |
+//+------------------------------------------------------------------+
+void AIPanel::DestroySessionButtons()
+{
+   for(int i = 0; i < m_sessionBtnCount; i++)
+   {
+      if(CheckPointer(m_sessionBtns[i]) == POINTER_DYNAMIC)
+      {
+         delete m_sessionBtns[i];
+         m_sessionBtns[i] = NULL;
+      }
+   }
+   ArrayResize(m_sessionBtns, 0);
+   m_sessionBtnCount = 0;
 }
 
 //+------------------------------------------------------------------+
@@ -397,21 +447,39 @@ bool AIPanel::CreatePanel()
    m_btnInfo.ColorBackground(m_clrTabInactive);
    CDialog::Add(m_btnInfo);
 
+   m_btnSession.Create(NULL, m_panelName + "_TabSession", 0, tabBtnX2 + tabBtnW * 2, 0, tabBtnX2 + tabBtnW * 3, m_tabHeight);
+   m_btnSession.Text("Session");
+   m_btnSession.FontSize(tabFontSz);
+   m_btnSession.Font("Consolas");
+   m_btnSession.Color(m_clrTabText);
+   m_btnSession.ColorBackground(m_clrTabInactive);
+   CDialog::Add(m_btnSession);
+
 // Input area
    int inputY    = panelH - m_inputAreaHeight;
    int sendX     = panelW - sendW - m_margin;
+   int copyGap   = (int)(6 * m_dpiScale);
+   int copyX     = sendX - m_copyBtnW - copyGap;
    int inputX    = m_margin;
    int inputY_C  = inputY + (m_inputAreaHeight - inputH) / 2;
 
-   m_txtInput.Create(NULL, m_panelName + "_Input", 0, inputX, inputY_C, sendX - m_margin, inputY_C + inputH);
+   m_txtInput.Create(NULL, m_panelName + "_Input", 0, inputX, inputY_C, copyX - m_margin, inputY_C + inputH);
    m_txtInput.FontSize(inputFontSz);
    m_txtInput.Font("Consolas");
    m_txtInput.Color(m_clrAiText);
    m_txtInput.ColorBackground(m_clrInputBg);
    m_txtInput.ReadOnly(true);
    m_txtInput.Text("");
-   m_txtInput.Alignment(WND_ALIGN_WIDTH, m_margin, 0, sendW + m_margin, 0);
+   m_txtInput.Alignment(WND_ALIGN_WIDTH, m_margin, 0, sendW + m_copyBtnW + copyGap + m_margin, 0);
    CDialog::Add(m_txtInput);
+
+   m_btnCopy.Create(NULL, m_panelName + "_Copy", 0, copyX, inputY_C, copyX + m_copyBtnW, inputY_C + sendH);
+   m_btnCopy.Text("Copy");
+   m_btnCopy.FontSize(inputFontSz);
+   m_btnCopy.Font("Consolas");
+   m_btnCopy.Color(m_clrTabText);
+   m_btnCopy.ColorBackground(m_clrTabInactive);
+   CDialog::Add(m_btnCopy);
 
    m_btnSend.Create(NULL, m_panelName + "_Send", 0, sendX, inputY_C, sendX + sendW, inputY_C + sendH);
    m_btnSend.Text("Send");
@@ -444,6 +512,20 @@ bool AIPanel::CreatePanel()
    m_btnScrollDown.Alignment(WND_ALIGN_RIGHT, 0, 0, m_margin, 0);
    CDialog::Add(m_btnScrollDown);
 
+// New Session button
+   int newBtnH = (int)(28 * m_dpiScale);
+   int newBtnY = m_chatTop + (int)(2 * m_dpiScale);
+   int newBtnW = panelW - scrlSize - m_margin * 3;
+   m_btnNewSession.Create(NULL, m_panelName + "_NewSession", 0, m_margin, newBtnY, m_margin + newBtnW, newBtnY + newBtnH);
+   m_btnNewSession.Text("New Session");
+   m_btnNewSession.FontSize(11);
+   m_btnNewSession.Font("Consolas");
+   m_btnNewSession.Color(m_clrSendText);
+   m_btnNewSession.ColorBackground(m_clrSendBtn);
+   m_btnNewSession.Alignment(WND_ALIGN_WIDTH, m_margin, 0, scrlSize + m_margin, 0);
+   CDialog::Add(m_btnNewSession);
+   m_sessionListTop = newBtnY + newBtnH + m_margin;
+
 // Run dialog
    if(!this.Run())
    {
@@ -454,7 +536,7 @@ bool AIPanel::CreatePanel()
    this.Maximize();
 
 // Show initial tab
-   SwitchToChat();
+   SwitchToSession();
 
    m_initialized = true;
    return true;
@@ -465,14 +547,20 @@ bool AIPanel::CreatePanel()
 //+------------------------------------------------------------------+
 void AIPanel::SwitchToChat()
 {
-   m_isChatTab = true;
+   m_isChatTab    = true;
+   m_isInfoTab    = false;
+   m_isSessionTab = false;
    m_inputFocused = true;
+   m_copyFlashCounter = 0;
+   m_btnCopy.Text("Copy");
    RefreshInputText();
    UpdateChatVisibility(true);
    UpdateInfoVisibility(false);
+   UpdateSessionVisibility(false);
 
    m_btnChat.ColorBackground(m_clrTabActive);
    m_btnInfo.ColorBackground(m_clrTabInactive);
+   m_btnSession.ColorBackground(m_clrTabInactive);
 
    ChartRedraw();
 }
@@ -482,19 +570,158 @@ void AIPanel::SwitchToChat()
 //+------------------------------------------------------------------+
 void AIPanel::SwitchToInfo()
 {
-   m_isChatTab = false;
+   m_isChatTab    = false;
+   m_isInfoTab    = true;
+   m_isSessionTab = false;
    m_inputFocused = false;
    RefreshInputText();
    UpdateChatVisibility(false);
    UpdateInfoVisibility(true);
+   UpdateSessionVisibility(false);
 
    m_btnChat.ColorBackground(m_clrTabInactive);
    m_btnInfo.ColorBackground(m_clrTabActive);
+   m_btnSession.ColorBackground(m_clrTabInactive);
 
    m_infoScrollOffset = 0;
    PopulateInfoTab();
 
    ChartRedraw();
+}
+
+//+------------------------------------------------------------------+
+//| Switch to Session tab                                            |
+//+------------------------------------------------------------------+
+void AIPanel::SwitchToSession()
+{
+   m_isChatTab    = false;
+   m_isInfoTab    = false;
+   m_isSessionTab = true;
+   m_inputFocused = false;
+   RefreshInputText();
+   UpdateChatVisibility(false);
+   UpdateInfoVisibility(false);
+   UpdateSessionVisibility(true);
+   RefreshSessionList();
+
+   m_btnChat.ColorBackground(m_clrTabInactive);
+   m_btnInfo.ColorBackground(m_clrTabInactive);
+   m_btnSession.ColorBackground(m_clrTabActive);
+
+   ChartRedraw();
+}
+
+//+------------------------------------------------------------------+
+//| Show/hide session controls                                       |
+//+------------------------------------------------------------------+
+void AIPanel::UpdateSessionVisibility(bool show)
+{
+   if(show)
+   {
+      m_btnNewSession.Show();
+   }
+   else
+   {
+      m_btnNewSession.Hide();
+   }
+   for(int i = 0; i < m_sessionBtnCount; i++)
+   {
+      if(CheckPointer(m_sessionBtns[i]) == POINTER_DYNAMIC)
+      {
+         if(show) m_sessionBtns[i].Show();
+         else m_sessionBtns[i].Hide();
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Format a session name into a display label                       |
+//+------------------------------------------------------------------+
+string AIPanel::SessionDisplayName(string name)
+{
+   int pos = StringFind(name, "_");
+   if(pos < 0) return name;
+   long id = StringToInteger(StringSubstr(name, pos + 1));
+   if(id <= 0) return name;
+   return TimeToString((datetime)id, TIME_DATE | TIME_MINUTES);
+}
+
+//+------------------------------------------------------------------+
+//| Rebuild the session list buttons                                 |
+//+------------------------------------------------------------------+
+void AIPanel::RefreshSessionList()
+{
+   DestroySessionButtons();
+   int count = sessionList(m_sessionNames);
+   if(count == 0)
+   {
+      m_sessionTotalHeight = 0;
+      return;
+   }
+
+   int panelW = Width();
+   int scrlSize = (int)(20 * m_dpiScale);
+   const int LINE_H = (int)(26 * m_dpiScale);
+   const int gap = (int)(4 * m_dpiScale);
+   m_sessionTotalHeight = count * LINE_H + (count - 1) * gap;
+
+   int yPos = m_sessionListTop - m_sessionScrollOffset;
+   int btnX = m_margin + (int)(4 * m_dpiScale);
+   int btnW = panelW - scrlSize - m_margin * 3 - (int)(4 * m_dpiScale);
+
+   for(int i = 0; i < count; i++)
+   {
+      int yEnd = yPos + LINE_H;
+      if(yEnd > m_sessionListTop && yPos < m_chatBottom)
+      {
+         int n = m_sessionBtnCount;
+         ArrayResize(m_sessionBtns, n + 1);
+         m_sessionBtnCount = n + 1;
+         m_sessionBtns[n] = new CButton();
+         m_sessionBtns[n].Create(NULL, m_panelName + "_Sess" + IntegerToString(i), 0, btnX, yPos, btnX + btnW, yPos + LINE_H);
+         m_sessionBtns[n].Text(SessionDisplayName(m_sessionNames[i]));
+         m_sessionBtns[n].FontSize(9);
+         m_sessionBtns[n].Font("Consolas");
+         m_sessionBtns[n].Color(m_clrAiText);
+         m_sessionBtns[n].ColorBackground(m_clrTabInactive);
+         if(m_isSessionTab) m_sessionBtns[n].Show();
+         else m_sessionBtns[n].Hide();
+         CDialog::Add(m_sessionBtns[n]);
+      }
+      yPos += LINE_H + gap;
+   }
+
+   ChartRedraw();
+}
+
+//+------------------------------------------------------------------+
+//| Start a new session and show the chat tab                        |
+//+------------------------------------------------------------------+
+void AIPanel::NewSession()
+{
+   if(m_requestPending) return;
+   if(CheckPointer(m_agent) != POINTER_DYNAMIC) return;
+
+   string name = m_agent.newSession();
+   if(name == "") return;
+
+   ClearChatMessages();
+   SwitchToChat();
+}
+
+//+------------------------------------------------------------------+
+//| Load a saved session and show the chat tab                       |
+//+------------------------------------------------------------------+
+void AIPanel::LoadSession(string name)
+{
+   if(m_requestPending) return;
+   if(CheckPointer(m_agent) != POINTER_DYNAMIC) return;
+
+   if(!m_agent.loadSession(name)) return;
+
+   ClearChatMessages();
+   LoadConversationFromAgent();
+   SwitchToChat();
 }
 
 //+------------------------------------------------------------------+
@@ -517,6 +744,14 @@ void AIPanel::UpdateChatVisibility(bool show)
    else
    {
       m_btnSend.Hide();
+   }
+   if(show)
+   {
+      m_btnCopy.Show();
+   }
+   else
+   {
+      m_btnCopy.Hide();
    }
 
    m_btnScrollUp.Show();
@@ -554,7 +789,7 @@ void AIPanel::RefreshInputText()
 {
    int panelW = Width();
    int sendW = (int)(65 * m_dpiScale);
-   int inputPixelW = panelW - (m_margin * 4) - sendW;
+   int inputPixelW = panelW - (m_margin * 4) - sendW - m_copyBtnW - (int)(6 * m_dpiScale);
    if(inputPixelW < (int)(80 * m_dpiScale))
       inputPixelW = (int)(80 * m_dpiScale);
 
@@ -966,7 +1201,7 @@ void AIPanel::WrapText(string text, int maxChars, string &lines[], int &lineCoun
 //+------------------------------------------------------------------+
 //| Add chat message                                                 |
 //+------------------------------------------------------------------+
-void AIPanel::AddMessage(string role, string content)
+void AIPanel::AppendMessage(string role, string content)
 {
    int idx = m_messageCount;
    ArrayResize(m_messages, m_messageCount + 1);
@@ -1015,8 +1250,66 @@ void AIPanel::AddMessage(string role, string content)
 // Auto-scroll to bottom
    int maxScroll = MathMax(0, m_chatTotalHeight - m_chatHeight);
    m_scrollOffset = maxScroll;
+}
 
+//+------------------------------------------------------------------+
+//| Add chat message                                                 |
+//+------------------------------------------------------------------+
+void AIPanel::AddMessage(string role, string content)
+{
+   AppendMessage(role, content);
    RenderMessages();
+}
+
+//+------------------------------------------------------------------+
+//| Clear the displayed chat messages                                |
+//+------------------------------------------------------------------+
+void AIPanel::ClearChatMessages()
+{
+   m_messageCount = 0;
+   ArrayResize(m_messages, 0);
+   m_chatTotalHeight = 0;
+   m_scrollOffset = 0;
+   RenderMessages();
+}
+
+//+------------------------------------------------------------------+
+//| Rebuild the chat display from the agent history                  |
+//+------------------------------------------------------------------+
+void AIPanel::LoadConversationFromAgent()
+{
+   if(CheckPointer(m_agent) != POINTER_DYNAMIC) return;
+   int n = m_agent.historyCount();
+   for(int i = 0; i < n; i++)
+   {
+      string role, content;
+      if(!m_agent.historyMessage(i, role, content)) continue;
+      if(role != "user" && role != "assistant") continue;
+      if(StringLen(content) == 0) continue;
+      if(StringFind(content, "image_url") >= 0) continue;
+      AppendMessage(role, content);
+   }
+   RenderMessages();
+}
+
+//+------------------------------------------------------------------+
+//| Copy the conversation to the system clipboard                    |
+//+------------------------------------------------------------------+
+void AIPanel::CopyConversation()
+{
+   if(m_messageCount == 0) return;
+   string text = "";
+   for(int i = 0; i < m_messageCount; i++)
+   {
+      string prefix = (m_messages[i].role == "user" ? "You: " : "AI: ");
+      text += prefix + m_messages[i].content + "\n";
+   }
+   StringTrimRight(text);
+   if(StringLen(text) == 0) return;
+   if(!ClipboardSetString(text)) return;
+   m_copyFlashCounter = 1000;
+   m_btnCopy.Text("Copied!");
+   ChartRedraw();
 }
 
 //+------------------------------------------------------------------+
@@ -1158,9 +1451,9 @@ void AIPanel::PopulateInfoTab()
 // Two-pass height calc
    struct InfoRow
    {
-      string key;
-      string val;
-      bool isHdr;
+      string         key;
+      string         val;
+      bool           isHdr;
    };
    InfoRow rows[99] = {};
    int rowCount = 0;
@@ -1424,9 +1717,15 @@ bool AIPanel::OnResize(void)
 // Clamp scroll offsets
    m_scrollOffset    = MathMax(0, MathMin(m_scrollOffset,    m_chatHeight * 10));
    m_infoScrollOffset = MathMax(0, MathMin(m_infoScrollOffset, m_chatHeight * 10));
+   m_sessionScrollOffset = MathMax(0, MathMin(m_sessionScrollOffset, m_chatHeight * 10));
 // Re-render tab content
    if(m_isChatTab)
       RenderMessages();
+   else if(m_isSessionTab)
+   {
+      m_sessionScrollOffset = 0;
+      RefreshSessionList();
+   }
    else
       PopulateInfoTab();
 
@@ -1467,7 +1766,25 @@ void AIPanel::PanelChartEvent(const int id, const long &lparam, const double &dp
       }
       else if(sparam == m_panelName + "_TabInfo")
       {
-         if(m_isChatTab) SwitchToInfo();
+         if(!m_isInfoTab) SwitchToInfo();
+      }
+      else if(sparam == m_panelName + "_TabSession")
+      {
+         if(!m_isSessionTab) SwitchToSession();
+      }
+      else if(sparam == m_panelName + "_NewSession")
+      {
+         NewSession();
+      }
+      else if(sparam == m_panelName + "_Copy")
+      {
+         CopyConversation();
+      }
+      else if(StringSubstr(sparam, 0, StringLen(m_panelName + "_Sess")) == m_panelName + "_Sess")
+      {
+         int idx = (int)StringToInteger(StringSubstr(sparam, StringLen(m_panelName + "_Sess")));
+         if(idx >= 0 && idx < ArraySize(m_sessionNames))
+            LoadSession(m_sessionNames[idx]);
       }
       else if(sparam == m_panelName + "_Send")
       {
@@ -1479,6 +1796,11 @@ void AIPanel::PanelChartEvent(const int id, const long &lparam, const double &dp
          {
             m_scrollOffset = MathMax(0, m_scrollOffset - (int)(60 * m_dpiScale));
             RenderMessages();
+         }
+         else if(m_isSessionTab)
+         {
+            m_sessionScrollOffset = MathMax(0, m_sessionScrollOffset - (int)(60 * m_dpiScale));
+            RefreshSessionList();
          }
          else
          {
@@ -1493,6 +1815,12 @@ void AIPanel::PanelChartEvent(const int id, const long &lparam, const double &dp
             int maxScroll = MathMax(0, m_chatTotalHeight - m_chatHeight);
             m_scrollOffset = MathMin(maxScroll, m_scrollOffset + (int)(60 * m_dpiScale));
             RenderMessages();
+         }
+         else if(m_isSessionTab)
+         {
+            int maxScroll = MathMax(0, m_sessionTotalHeight - (m_chatBottom - m_sessionListTop));
+            m_sessionScrollOffset = MathMin(maxScroll, m_sessionScrollOffset + (int)(60 * m_dpiScale));
+            RefreshSessionList();
          }
          else
          {
@@ -1509,7 +1837,17 @@ void AIPanel::PanelChartEvent(const int id, const long &lparam, const double &dp
 //+------------------------------------------------------------------+
 void AIPanel::OnTickUpdate()
 {
-   if(!m_isChatTab && m_initialized)
+   if(m_isChatTab && m_initialized)
+   {
+      if(m_copyFlashCounter > 0)
+      {
+         m_copyFlashCounter--;
+         if(m_copyFlashCounter == 0)
+            m_btnCopy.Text("Copy");
+      }
+      ChartRedraw();
+   }
+   else if(m_isInfoTab && m_initialized)
    {
       m_tickCounter++;
       if(m_tickCounter >= 10)
@@ -1517,10 +1855,6 @@ void AIPanel::OnTickUpdate()
          m_tickCounter = 0;
          PopulateInfoTab();
       }
-   }
-   else if(m_isChatTab && m_initialized)
-   {
-      ChartRedraw();
    }
 }
 
