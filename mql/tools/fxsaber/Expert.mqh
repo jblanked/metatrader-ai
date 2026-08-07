@@ -11,6 +11,7 @@
 #define EXPERT_CHART_BEGIN ("<chart>" + STRING_END)
 #define EXPERT_NAME "name="
 #define EXPERT_PATH "path="
+#define EXPERT_MODE "expertmode=5" // DLL imports allowed
 #define EXPERT_STOPLEVEL "stops_color="
 
 class EXPERT
@@ -241,7 +242,8 @@ public:
         else if (FirstRun)
         {
           const string StrNew = EXPERT_BEGIN + EXPERT_NAME + EXPERT::GetName(Parameters[0].string_value) + STRING_END +
-                                EXPERT_PATH + Parameters[0].string_value + STRING_END + EXPERT_END;
+                                EXPERT_PATH + Parameters[0].string_value + STRING_END +
+                                EXPERT_MODE + STRING_END + EXPERT_END;
 
           FirstRun = false;
           Res = EXPERT::StringReplace(StrTemplate, EXPERT_BEGIN, EXPERT_END, StrNew) && EXPERT::TemplateApply(Chart_ID, StrTemplate) &&
@@ -260,7 +262,8 @@ public:
       {
         StrTemplate = EXPERT::StringBetween2(StrTemplate, NULL, EXPERT_CHART_BEGIN) +
                       EXPERT_BEGIN + EXPERT_NAME + EXPERT::GetName(Parameters[0].string_value) + STRING_END +
-                      EXPERT_PATH + Parameters[0].string_value + STRING_END + EXPERT_END + StrTemplate;
+                      EXPERT_PATH + Parameters[0].string_value + STRING_END +
+                      EXPERT_MODE + STRING_END + EXPERT_END + StrTemplate;
 
         FirstRun = false;
         Res = EXPERT::TemplateApply(Chart_ID, StrTemplate) && ((::ArraySize(Parameters) > 1) ? EXPERT::Run(Chart_ID, Parameters) : true);
@@ -282,6 +285,7 @@ public:
 #undef EXPERT_STOPLEVEL
 #undef EXPERT_PATH
 #undef EXPERT_NAME
+#undef EXPERT_MODE
 #undef EXPERT_CHART_BEGIN
 #undef EXPERT_INPUT_END
 #undef EXPERT_INPUT_BEGIN

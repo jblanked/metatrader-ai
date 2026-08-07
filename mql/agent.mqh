@@ -457,7 +457,6 @@ string Agent::runSubAgent(string prompt)
 // Forward credentials and prompt to app.ex5 (inputs in declaration order)
    MqlParam prms[10];
    prms[0].type = TYPE_STRING; prms[0].string_value = SUBAGENT_EXE;          // expert path
-   prms[0].string_value += "\nexpertmode=5"; // Permission to use DLL (https://www.mql5.com/en/forum/218714/page7#comment_57531531)
    prms[1].type = TYPE_STRING; prms[1].string_value = m_apiKey;              // inpApiKey
    prms[2].type = TYPE_INT;    prms[2].integer_value = (int)m_providerId;    // inpProvider
    prms[3].type = TYPE_INT;    prms[3].integer_value = (int)m_providerModel; // inpModel
