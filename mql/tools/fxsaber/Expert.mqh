@@ -207,8 +207,6 @@ public:
 
     if (Res)
     {
-       PrintFormat("Template created on chart id %d", Chart_ID);
-       
       if (EXPERT::Is(Chart_ID))
       {
         string Str = StrTemplate;
@@ -239,7 +237,6 @@ public:
           StrNew = EXPERT_BEGIN + StrNew + EXPERT_INPUT_END + EXPERT_END;
 
           Res = EXPERT::StringReplace(StrTemplate, EXPERT_BEGIN, EXPERT_END, StrNew) && EXPERT::TemplateApply(Chart_ID, StrTemplate);
-          PrintFormat("expert path res: %d", Res);
         }
         else if (FirstRun)
         {
@@ -249,7 +246,7 @@ public:
           FirstRun = false;
           Res = EXPERT::StringReplace(StrTemplate, EXPERT_BEGIN, EXPERT_END, StrNew) && EXPERT::TemplateApply(Chart_ID, StrTemplate) &&
                 EXPERT::Run(Chart_ID, Parameters);
-          PrintFormat("First run res: %d", Res);
+
           FirstRun = true;
         }
         else
@@ -257,7 +254,6 @@ public:
           FirstRun = true;
 
           Res = false;
-          Print("res set to false - inner");
         }
       }
       else if (FirstRun)
@@ -268,7 +264,7 @@ public:
 
         FirstRun = false;
         Res = EXPERT::TemplateApply(Chart_ID, StrTemplate) && ((::ArraySize(Parameters) > 1) ? EXPERT::Run(Chart_ID, Parameters) : true);
-         PrintFormat("firsr run outer-res: %d", Res);
+
         FirstRun = true;
       }
       else
@@ -276,12 +272,7 @@ public:
         FirstRun = true;
 
         Res = false;
-        Print("res set to false- outer");
       }
-    }
-    else
-    {
-      PrintFormat("Failed to create template on chart id %d", Chart_ID);
     }
 
     return(Res);
