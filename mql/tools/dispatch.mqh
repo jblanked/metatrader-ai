@@ -123,7 +123,6 @@ public:
       ArrayResize(tools, 0);
    }
 
-protected:
    void add(Tool *t)
    {
       ArrayResize(tools, count + 1);
