@@ -138,7 +138,6 @@ void OnTimer()
 
          string sessionName = agent.newSession();
          string response = agent.run(prompt);
-         PrintFormat("[App] Sub-agent response:\n%s", response);
 
          // Write the result file for the parent to collect
          if(inpResponseFile != "")
