@@ -22,8 +22,8 @@ public:
    int               lastAccessed;
    CJAVal            messages;
 
-   Session(bool create = true, bool shouldSaveOnExit = true);
-   ~Session();
+                     Session(bool create = true, bool shouldSaveOnExit = true);
+                    ~Session();
    bool              load(string filename);
    bool              save();
    bool              active();          // True once created or loaded
@@ -37,12 +37,12 @@ private:
 //+------------------------------------------------------------------+
 Session::Session(bool create, bool shouldSaveOnExit)
 {
-    if (!FolderCreate(SESSION_FOLDER, FILE_COMMON))
+   if (!FolderCreate(SESSION_FOLDER, FILE_COMMON))
    {
       PrintFormat("Failed to create session folder: %s", SESSION_FOLDER);
-      return false;
+      return;
    }
-   
+
    if(create)
    {
       id           = (long)TimeCurrent();
