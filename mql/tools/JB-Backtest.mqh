@@ -19,7 +19,9 @@
 */
 
 #include "fxsaber\Expert.mqh"                              // https://www.mql5.com/en/code/19003
-#include "fxsaber\MultiTester\MTTester.mqh"                // https://www.mql5.com/en/code/26132
+#define private public
+   #include "fxsaber\MultiTester\MTTester.mqh"                // https://www.mql5.com/en/code/26132
+#undef private
 #include "fxsaber\SingleTesterCache\SingleTesterCache.mqh" // https://www.mql5.com/en/code/27611
 #include "fxsaber\TesterCache\TesterCache.mqh"             // https://www.mql5.com/ru/code/26223
 
