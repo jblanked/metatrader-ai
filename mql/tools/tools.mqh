@@ -960,6 +960,24 @@ public:
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
+class ToolFileList : public Tool
+{
+public:
+   ToolFileList() : Tool("file_list", "List files in a folder, optionally matching a name key and/or extension.", toolFileListParams()) {}
+   virtual string execute(CJAVal &json) override
+   {
+      return fileList(
+                json["folder"].ToStr(),
+                json["key"].ToStr(),
+                json["ext"].ToStr(),
+                json["recursive"].ToBool()
+             );
+   }
+};
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
 class ToolGetTerminalInfo : public Tool
 {
 public:
