@@ -136,7 +136,7 @@ private:
    Agent             *m_agent; // agent that owns this tool
 
 public:
-   ToolRunSubAgent(Agent *agent) : Tool("run_subagent", "Launch a sub-agent on a separate chart with the given prompt and return its id immediately (it runs in parallel). Launch as many as needed to split a large task, then call collect_subagents to retrieve all results.", toolRunSubAgentParams())
+   ToolRunSubAgent(Agent *agent) : Tool("run_subagent", "Launch a sub-agent on a separate chart with the given prompt and return its id immediately (it runs in parallel). Launch as many as needed to split a large task (two or more tasks) or quickly get numerous results, then call collect_subagents to retrieve all results.", toolRunSubAgentParams())
    {
       m_agent = agent;
    }
