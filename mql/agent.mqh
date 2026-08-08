@@ -176,8 +176,8 @@ public:
 void Agent::addSubAgentTool()
 {
    if(CheckPointer(m_dispatch) != POINTER_DYNAMIC) return;
-   m_dispatch.add(new ToolRunSubAgent(this));
-   m_dispatch.add(new ToolCollectSubAgents(this));
+   m_dispatch.add(new ToolRunSubAgent(&this));
+   m_dispatch.add(new ToolCollectSubAgents(&this));
 }
 
 //+------------------------------------------------------------------+
