@@ -62,7 +62,9 @@ string fileDelete(const string path)
 //+------------------------------------------------------------------+
 string fileExists(const string path)
 {
-   const string tempName   = "fexists_" + (string)GetTickCount() + ".txt";
+   static int seq = 0;
+   seq++;
+   const string tempName   = "fexists_" + (string)GetTickCount() + "_" + (string)seq + ".txt";
    const string tempRel    = "metatrader-ai\\temp\\" + tempName;
    const string commonPath = FILE_COMMON_FOLDER + tempRel;
    if(!::FolderCreate("metatrader-ai", FILE_COMMON) || !::FolderCreate(FILE_TEMP_FOLDER, FILE_COMMON))
@@ -77,16 +79,18 @@ string fileExists(const string path)
       FILE_PRINT_RETURN("Failed to run powershell, error: " + (string)shellResult);
    }
 
-   for(int i = 0; i < 30; i++)
+   // retry open
+   int handle = INVALID_HANDLE;
+   for(int i = 0; i < 100 && handle == INVALID_HANDLE; i++)
    {
       Sleep(100);
-      if(::FileIsExist(tempRel, FILE_COMMON)) break;
+      if(::FileIsExist(tempRel, FILE_COMMON))
+         handle = ::FileOpen(tempRel, FILE_READ | FILE_COMMON | FILE_TXT | FILE_ANSI);
    }
-
-   int handle = ::FileOpen(tempRel, FILE_READ | FILE_COMMON | FILE_TXT | FILE_ANSI);
    if(handle == INVALID_HANDLE)
    {
-      FILE_PRINT_RETURN("Failed to open file! error: " + (string)GetLastError());
+      PrintFormat("Failed to open file! error: %d (%s)", GetLastError(), commonPath);
+      return "false";
    }
 
    string result = ::FileReadString(handle);
@@ -250,9 +254,7 @@ string fileRead(const string path)
 //+------------------------------------------------------------------+
 string fileWrite(const string path, char &data[], int index = 0, bool overwrite = true)
 {
-   const bool exists = fileExists(path) == "true";
-
-   if(!overwrite && exists && index == 0)
+   if(!overwrite && index == 0 && fileExists(path) == "true")
    {
       FILE_PRINT_RETURN("File already exists and overwrite is set to turned off so no action occurred.");
    }
@@ -286,14 +288,15 @@ string fileWrite(const string path, char &data[], int index = 0, bool overwrite 
       fileCopy(commonTmp, path);
 
       bool copied = false;
-      for(int i = 0; i < 100; i++)
+      const int cfLen = StringLen(FILE_COMMON_FOLDER);
+      const bool inCommon = (StringLen(path) > cfLen && StringSubstr(path, 0, cfLen) == FILE_COMMON_FOLDER);
+      for(int i = 0; i < 20 && !copied; i++)
       {
          Sleep(100);
-         if(fileExists(path) == "true")
-         {
-            copied = true;
-            break;
-         }
+         if(inCommon)
+            copied = ::FileIsExist(StringSubstr(path, cfLen), FILE_COMMON);
+         else
+            copied = (fileExists(path) == "true");
       }
 
       ::FileDelete(tempRel, FILE_COMMON);
