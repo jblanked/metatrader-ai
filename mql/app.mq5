@@ -162,6 +162,9 @@ void OnTimer()
       return;
    }
 
+   if(CheckPointer(agent) == POINTER_DYNAMIC)
+      agent.processScheduledTasks();
+
    panel.OnTickUpdate();
 
    if(panel.IsRequestPending())

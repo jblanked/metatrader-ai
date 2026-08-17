@@ -16,6 +16,7 @@
 #include "file.mqh"
 #include "terminal.mqh"
 #include "chart.mqh"
+#include "scheduler.mqh"
 
 #define BOOL_TO_STRING(value) ((value) ? "true" : "false")
 
