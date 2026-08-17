@@ -7,7 +7,7 @@
 #property link      "https://www.jblanked.com"
 #property version   "1.08"
 #property description "MetaTrader-AI: AI trading assistant for MetaTrader 5"
-#property description "Last updated: August 7th, 2026"
+#property description "Last updated: August 17th, 2026"
 #property strict
 
 #include "agent.mqh"
