@@ -1687,6 +1687,8 @@ void AIPanel::RenderMessages()
                m_msgLabels[n].Font("Consolas");
             }
 
+            m_msgLabels[n].Alignment(WND_ALIGN_WIDTH, labelX, 0, (int)(20 * m_dpiScale) + m_margin, 0);
+
             if(m_isChatTab) m_msgLabels[n].Show();
             else m_msgLabels[n].Hide();
             CDialog::Add(m_msgLabels[n]);
