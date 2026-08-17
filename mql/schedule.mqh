@@ -30,6 +30,8 @@ public:
    string            toolName;
    string            arguments;
    string            result;
+   string            recurrence;
+   datetime          lastExecutionTime;
    bool              shouldExecute(datetime currentTime)
    {
       if(finished || started || expired || cancelled)
@@ -69,6 +71,7 @@ private:
    uint              taskCount;
    bool              save();
    bool              load();
+   datetime          nextOccurrence(datetime occurrence, string recurrenceRule);
 };
 
 //+------------------------------------------------------------------+
@@ -144,8 +147,18 @@ bool Schedule::finishTask(uint id, string result)
    {
       if(tasks[i].id == id && tasks[i].started)
       {
-         tasks[i].finished = true;
+         tasks[i].lastExecutionTime = tasks[i].executionTime;
          tasks[i].result = result;
+         if(tasks[i].recurrence != "none" && tasks[i].recurrence != "")
+         {
+            tasks[i].executionTime = nextOccurrence(tasks[i].executionTime, tasks[i].recurrence);
+            tasks[i].started = false;
+            tasks[i].finished = false;
+         }
+         else
+         {
+            tasks[i].finished = true;
+         }
          return save();
       }
    }
@@ -176,7 +189,22 @@ void Schedule::expireMissedTasks(datetime currentTime)
    bool changed = false;
    for(uint i = 0; i < taskCount; i++)
    {
-      if(!tasks[i].finished && !tasks[i].started && !tasks[i].expired && !tasks[i].cancelled && currentTime >= tasks[i].executionTime + SCHEDULE_WINDOW_SECONDS)
+      if(tasks[i].finished || tasks[i].started || tasks[i].expired || tasks[i].cancelled)
+         continue;
+
+      if(tasks[i].recurrence != "none" && tasks[i].recurrence != "")
+      {
+         bool advanced = false;
+         while(currentTime >= tasks[i].executionTime + SCHEDULE_WINDOW_SECONDS)
+         {
+            tasks[i].lastExecutionTime = tasks[i].executionTime;
+            tasks[i].executionTime = nextOccurrence(tasks[i].executionTime, tasks[i].recurrence);
+            advanced = true;
+         }
+         if(advanced)
+            changed = true;
+      }
+      else if(currentTime >= tasks[i].executionTime + SCHEDULE_WINDOW_SECONDS)
       {
          tasks[i].expired = true;
          changed = true;
@@ -203,6 +231,8 @@ string Schedule::list()
       item["execution_time"] = TimeToString(tasks[i].executionTime, TIME_DATE | TIME_SECONDS);
       item["tool_name"] = tasks[i].toolName;
       item["arguments"] = tasks[i].arguments;
+      item["recurrence"] = tasks[i].recurrence;
+      item["last_execution_time"] = tasks[i].lastExecutionTime > 0 ? TimeToString(tasks[i].lastExecutionTime, TIME_DATE | TIME_SECONDS) : "";
       item["status"] = tasks[i].status();
       item["result"] = tasks[i].result;
       result.Add(item);
@@ -231,6 +261,8 @@ bool Schedule::save()
       item["toolName"] = tasks[i].toolName;
       item["arguments"] = tasks[i].arguments;
       item["result"] = tasks[i].result;
+      item["recurrence"] = tasks[i].recurrence;
+      item["lastExecutionTime"] = (long)tasks[i].lastExecutionTime;
       json.Add(item);
    }
 
@@ -288,6 +320,10 @@ bool Schedule::load()
       task.toolName = json[i]["toolName"].ToStr();
       task.arguments = json[i]["arguments"].ToStr();
       task.result = json[i]["result"].ToStr();
+      task.recurrence = json[i]["recurrence"].ToStr();
+      if(task.recurrence == "")
+         task.recurrence = task.repeat ? "daily" : "none";
+      task.lastExecutionTime = (datetime)json[i]["lastExecutionTime"].ToInt();
       ArrayResize(tasks, taskCount + 1);
       tasks[taskCount] = task;
       taskCount++;
@@ -295,4 +331,22 @@ bool Schedule::load()
          currentId = task.id + 1;
    }
    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Calculate the next recurrence time                              |
+//+------------------------------------------------------------------+
+datetime Schedule::nextOccurrence(datetime occurrence, string recurrenceRule)
+{
+   if(recurrenceRule == "weekly")
+      return occurrence + 7 * 24 * 60 * 60;
+
+   datetime next = occurrence + 24 * 60 * 60;
+   if(recurrenceRule != "weekdays")
+      return next;
+
+   MqlDateTime date;
+   while(TimeToStruct(next, date) && (date.day_of_week == 0 || date.day_of_week == 6))
+      next += 24 * 60 * 60;
+   return next;
 }

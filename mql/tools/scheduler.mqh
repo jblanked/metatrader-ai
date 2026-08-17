@@ -20,6 +20,7 @@ Parameters *toolScheduleTaskParams(void)
    p.add(new Property("execution_time", "string", "Broker/server time in YYYY.MM.DD HH:MM:SS format. Call get_server_time first when resolving relative times such as today.", true));
    p.add(new Property("tool_name", "string", "The exact existing tool to execute at the scheduled time, such as order_send or order_send_pips", true));
    p.add(new Property("arguments", "string", "A JSON object string containing the exact arguments for tool_name", true));
+   p.add(new Property("recurrence", "string", "Optional recurrence rule: none (default), daily, weekdays, or weekly", false));
    return p;
 }
 
@@ -32,7 +33,7 @@ private:
    Schedule *m_schedule;
 
 public:
-   ToolScheduleTask(Schedule *schedule) : Tool("schedule_task", "Schedule one existing tool call for a future broker/server time. The stored tool runs once without confirmation; missed tasks expire and are not executed. Do not schedule scheduler control tools.", toolScheduleTaskParams())
+   ToolScheduleTask(Schedule *schedule) : Tool("schedule_task", "Schedule one existing tool call for a future broker/server time. Use recurrence none, daily, weekdays, or weekly. Recurring missed occurrences are skipped; one-time missed tasks expire. Do not schedule scheduler control tools.", toolScheduleTaskParams())
    {
       m_schedule = schedule;
    }
@@ -58,6 +59,13 @@ public:
       if(StringLen(arguments) == 0 || !parsedArguments.Deserialize(arguments) || parsedArguments.m_type != jtOBJ)
          return "{\"error\":\"arguments must be a valid JSON object string\"}";
 
+      string recurrence = json["recurrence"].ToStr();
+      StringToLower(recurrence);
+      if(recurrence == "")
+         recurrence = "none";
+      if(recurrence != "none" && recurrence != "daily" && recurrence != "weekdays" && recurrence != "weekly")
+         return "{\"error\":\"invalid recurrence; use none, daily, weekdays, or weekly\"}";
+
       ScheduleTask task;
       task.executionTime = executionTime;
       task.finished      = false;
@@ -65,11 +73,13 @@ public:
       task.name          = json["name"].ToStr();
       task.toolName      = toolName;
       task.arguments     = arguments;
-      task.repeat        = false;
+      task.repeat        = recurrence != "none";
       task.started       = false;
       task.expired       = false;
       task.cancelled     = false;
       task.result        = "";
+      task.recurrence    = recurrence;
+      task.lastExecutionTime = 0;
 
       if(!m_schedule.addTask(task))
          return "{\"error\":\"failed to save scheduled task\"}";
@@ -80,6 +90,7 @@ public:
       result["name"]           = task.name;
       result["execution_time"] = TimeToString(task.executionTime, TIME_DATE | TIME_SECONDS);
       result["tool_name"]      = task.toolName;
+      result["recurrence"]     = task.recurrence;
       result["server_time"]    = TimeToString(TimeCurrent(), TIME_DATE | TIME_SECONDS);
       return result.Serialize();
    }

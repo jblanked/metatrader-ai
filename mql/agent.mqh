@@ -44,6 +44,8 @@ public:
    string            collectSubAgentsAndWait();                            // Wait for all sub-agents
    string            pollSubAgent(string subAgentId, bool appendToConversation = true); // Collect sub-agent result
    void              processScheduledTasks();                              // Execute due scheduled tools
+   string            scheduledTasks();                                     // List scheduled tasks
+   bool              cancelScheduledTask(uint id);                         // Cancel a scheduled task
 
 private:
    CJAVal            m_messages;        // persistent conversation history (jtARRAY)
@@ -393,6 +395,24 @@ void Agent::processScheduledTasks()
       m_schedule.finishTask(task.id, result);
       PrintFormat("[Agent] Scheduled task %u (%s) executed: %s", task.id, task.name, result);
    }
+}
+
+//+------------------------------------------------------------------+
+//| Return scheduled tasks                                           |
+//+------------------------------------------------------------------+
+string Agent::scheduledTasks()
+{
+   if(CheckPointer(m_schedule) != POINTER_DYNAMIC)
+      return "[]";
+   return m_schedule.list();
+}
+
+//+------------------------------------------------------------------+
+//| Cancel a scheduled task                                          |
+//+------------------------------------------------------------------+
+bool Agent::cancelScheduledTask(uint id)
+{
+   return CheckPointer(m_schedule) == POINTER_DYNAMIC && m_schedule.cancelTask(id);
 }
 
 //+------------------------------------------------------------------+

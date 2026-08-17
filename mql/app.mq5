@@ -197,12 +197,14 @@ private:
    bool              m_isChatTab;
    bool              m_isInfoTab;
    bool              m_isSessionTab;
+   bool              m_isTaskTab;
    bool              m_initialized;
 
    // Tab buttons
    CButton           m_btnChat;
    CButton           m_btnInfo;
    CButton           m_btnSession;
+   CButton           m_btnTasks;
 
    // Chat components
    CLabel            *m_msgLabels[];     // array of message label pointers
@@ -219,6 +221,15 @@ private:
    int               m_sessionScrollOffset;
    int               m_sessionTotalHeight;
    int               m_sessionListTop;
+
+   // Task tab components
+   CLabel            *m_taskLabels[];
+   CButton           *m_taskCancelBtns[];
+   int               m_taskLabelCount;
+   int               m_taskCancelBtnCount;
+   int               m_taskScrollOffset;
+   int               m_taskTotalHeight;
+   int               m_taskListTop;
 
    // Info tab labels
    CLabel            *m_infoLabels[];    // info display labels
@@ -284,16 +295,20 @@ private:
    // Private helpers
    void              DestroyMessageLabels();
    void              DestroySessionButtons();
+   void              DestroyTaskControls();
    void              UpdateChatVisibility(bool show);
    void              UpdateInfoVisibility(bool show);
    void              UpdateSessionVisibility(bool show);
+   void              UpdateTaskVisibility(bool show);
    void              SwitchToChat();
    void              SwitchToInfo();
    void              SwitchToSession();
+   void              SwitchToTasks();
    void              RenderMessages();
    void              ClearInfoLabels();
    void              PopulateInfoTab();
    void              RefreshSessionList();
+   void              RefreshTaskList();
    void              SendCurrentMessage();
    void              NewSession();
    void              LoadSession(string name);
@@ -363,6 +378,7 @@ AIPanel::AIPanel(
    m_isChatTab       = true;
    m_isInfoTab       = false;
    m_isSessionTab    = false;
+   m_isTaskTab       = false;
    m_initialized     = false;
    m_messageCount    = 0;
    m_msgLabelCount   = 0;
@@ -387,6 +403,11 @@ AIPanel::AIPanel(
    m_sessionScrollOffset = 0;
    m_sessionTotalHeight = 0;
    m_sessionListTop  = 0;
+   m_taskLabelCount = 0;
+   m_taskCancelBtnCount = 0;
+   m_taskScrollOffset = 0;
+   m_taskTotalHeight = 0;
+   m_taskListTop = 0;
    m_copyFlashCounter = 0;
 
 // DPI scaling
@@ -425,6 +446,7 @@ AIPanel::~AIPanel()
 {
    DestroyMessageLabels();
    DestroySessionButtons();
+   DestroyTaskControls();
    ClearInfoLabels();
 }
 
@@ -477,6 +499,33 @@ void AIPanel::DestroySessionButtons()
    }
    ArrayResize(m_sessionBtns, 0);
    m_sessionBtnCount = 0;
+}
+
+//+------------------------------------------------------------------+
+//| Destroy task controls                                            |
+//+------------------------------------------------------------------+
+void AIPanel::DestroyTaskControls()
+{
+   for(int i = 0; i < m_taskLabelCount; i++)
+   {
+      if(CheckPointer(m_taskLabels[i]) == POINTER_DYNAMIC)
+      {
+         delete m_taskLabels[i];
+         m_taskLabels[i] = NULL;
+      }
+   }
+   for(int i = 0; i < m_taskCancelBtnCount; i++)
+   {
+      if(CheckPointer(m_taskCancelBtns[i]) == POINTER_DYNAMIC)
+      {
+         delete m_taskCancelBtns[i];
+         m_taskCancelBtns[i] = NULL;
+      }
+   }
+   ArrayResize(m_taskLabels, 0);
+   ArrayResize(m_taskCancelBtns, 0);
+   m_taskLabelCount = 0;
+   m_taskCancelBtnCount = 0;
 }
 
 //+------------------------------------------------------------------+
@@ -533,6 +582,14 @@ bool AIPanel::CreatePanel()
    m_btnSession.Color(m_clrTabText);
    m_btnSession.ColorBackground(m_clrTabInactive);
    CDialog::Add(m_btnSession);
+
+   m_btnTasks.Create(NULL, m_panelName + "_TabTasks", 0, tabBtnX2 + tabBtnW * 3, 0, tabBtnX2 + tabBtnW * 4, m_tabHeight);
+   m_btnTasks.Text("Tasks");
+   m_btnTasks.FontSize(tabFontSz);
+   m_btnTasks.Font("Consolas");
+   m_btnTasks.Color(m_clrTabText);
+   m_btnTasks.ColorBackground(m_clrTabInactive);
+   CDialog::Add(m_btnTasks);
 
 // Input area
    int inputY    = panelH - m_inputAreaHeight;
@@ -629,6 +686,7 @@ void AIPanel::SwitchToChat()
    m_isChatTab    = true;
    m_isInfoTab    = false;
    m_isSessionTab = false;
+   m_isTaskTab    = false;
    m_inputFocused = true;
    m_copyFlashCounter = 0;
    m_btnCopy.Text("Copy");
@@ -636,10 +694,12 @@ void AIPanel::SwitchToChat()
    UpdateChatVisibility(true);
    UpdateInfoVisibility(false);
    UpdateSessionVisibility(false);
+   UpdateTaskVisibility(false);
 
    m_btnChat.ColorBackground(m_clrTabActive);
    m_btnInfo.ColorBackground(m_clrTabInactive);
    m_btnSession.ColorBackground(m_clrTabInactive);
+   m_btnTasks.ColorBackground(m_clrTabInactive);
 
    ChartRedraw();
 }
@@ -652,15 +712,18 @@ void AIPanel::SwitchToInfo()
    m_isChatTab    = false;
    m_isInfoTab    = true;
    m_isSessionTab = false;
+   m_isTaskTab    = false;
    m_inputFocused = false;
    RefreshInputText();
    UpdateChatVisibility(false);
    UpdateInfoVisibility(true);
    UpdateSessionVisibility(false);
+   UpdateTaskVisibility(false);
 
    m_btnChat.ColorBackground(m_clrTabInactive);
    m_btnInfo.ColorBackground(m_clrTabActive);
    m_btnSession.ColorBackground(m_clrTabInactive);
+   m_btnTasks.ColorBackground(m_clrTabInactive);
 
    m_infoScrollOffset = 0;
    PopulateInfoTab();
@@ -676,17 +739,46 @@ void AIPanel::SwitchToSession()
    m_isChatTab    = false;
    m_isInfoTab    = false;
    m_isSessionTab = true;
+   m_isTaskTab    = false;
    m_inputFocused = false;
    RefreshInputText();
    UpdateChatVisibility(false);
    UpdateInfoVisibility(false);
    UpdateSessionVisibility(true);
+   UpdateTaskVisibility(false);
    RefreshSessionList();
 
    m_btnChat.ColorBackground(m_clrTabInactive);
    m_btnInfo.ColorBackground(m_clrTabInactive);
    m_btnSession.ColorBackground(m_clrTabActive);
+   m_btnTasks.ColorBackground(m_clrTabInactive);
 
+   ChartRedraw();
+}
+
+//+------------------------------------------------------------------+
+//| Switch to Tasks tab                                              |
+//+------------------------------------------------------------------+
+void AIPanel::SwitchToTasks()
+{
+   m_isChatTab    = false;
+   m_isInfoTab    = false;
+   m_isSessionTab = false;
+   m_isTaskTab    = true;
+   m_inputFocused = false;
+   RefreshInputText();
+   UpdateChatVisibility(false);
+   UpdateInfoVisibility(false);
+   UpdateSessionVisibility(false);
+   UpdateTaskVisibility(true);
+
+   m_btnChat.ColorBackground(m_clrTabInactive);
+   m_btnInfo.ColorBackground(m_clrTabInactive);
+   m_btnSession.ColorBackground(m_clrTabInactive);
+   m_btnTasks.ColorBackground(m_clrTabActive);
+
+   m_taskScrollOffset = 0;
+   RefreshTaskList();
    ChartRedraw();
 }
 
@@ -709,6 +801,29 @@ void AIPanel::UpdateSessionVisibility(bool show)
       {
          if(show) m_sessionBtns[i].Show();
          else m_sessionBtns[i].Hide();
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Show/hide task controls                                          |
+//+------------------------------------------------------------------+
+void AIPanel::UpdateTaskVisibility(bool show)
+{
+   for(int i = 0; i < m_taskLabelCount; i++)
+   {
+      if(CheckPointer(m_taskLabels[i]) == POINTER_DYNAMIC)
+      {
+         if(show) m_taskLabels[i].Show();
+         else m_taskLabels[i].Hide();
+      }
+   }
+   for(int i = 0; i < m_taskCancelBtnCount; i++)
+   {
+      if(CheckPointer(m_taskCancelBtns[i]) == POINTER_DYNAMIC)
+      {
+         if(show) m_taskCancelBtns[i].Show();
+         else m_taskCancelBtns[i].Hide();
       }
    }
 }
@@ -782,6 +897,109 @@ void AIPanel::RefreshSessionList()
          CDialog::Add(m_sessionBtns[n]);
       }
       yPos += LINE_H + gap;
+   }
+
+   ChartRedraw();
+}
+
+//+------------------------------------------------------------------+
+//| Rebuild the scheduled task list                                 |
+//+------------------------------------------------------------------+
+void AIPanel::RefreshTaskList()
+{
+   DestroyTaskControls();
+
+   if(CheckPointer(m_agent) != POINTER_DYNAMIC)
+      return;
+
+   CJAVal taskArray;
+   if(!taskArray.Deserialize(m_agent.scheduledTasks()) || taskArray.m_type != jtARRAY)
+      return;
+
+   const int count = ArraySize(taskArray.m_e);
+   const int panelW = Width();
+   const int scrlSize = (int)(20 * m_dpiScale);
+   const int rowH = (int)(34 * m_dpiScale);
+   const int cancelW = (int)(58 * m_dpiScale);
+   const int labelX = m_margin + (int)(4 * m_dpiScale);
+   const int cancelX = panelW - scrlSize - m_margin - cancelW;
+   const int labelW = cancelX - labelX - (int)(4 * m_dpiScale);
+
+   m_taskListTop = m_chatTop + (int)(4 * m_dpiScale);
+   m_taskTotalHeight = MathMax(0, count * rowH);
+   int maxScroll = MathMax(0, m_taskTotalHeight - m_chatHeight);
+   m_taskScrollOffset = MathMin(maxScroll, MathMax(0, m_taskScrollOffset));
+   int yPos = m_taskListTop - m_taskScrollOffset;
+
+   if(count == 0)
+   {
+      ArrayResize(m_taskLabels, 1);
+      m_taskLabelCount = 1;
+      m_taskLabels[0] = new CLabel();
+      m_taskLabels[0].Create(NULL, m_panelName + "_TaskEmpty", 0, labelX, m_taskListTop, labelX + labelW, m_taskListTop + rowH);
+      m_taskLabels[0].Text("No scheduled tasks");
+      m_taskLabels[0].Color(m_clrAiText);
+      m_taskLabels[0].ColorBackground(m_clrBg);
+      m_taskLabels[0].FontSize(10);
+      m_taskLabels[0].Font("Consolas");
+      m_taskLabels[0].Show();
+      CDialog::Add(m_taskLabels[0]);
+      ChartRedraw();
+      return;
+   }
+
+   for(int i = 0; i < count; i++)
+   {
+      int yEnd = yPos + rowH;
+      if(yEnd > m_chatTop && yPos < m_chatBottom)
+      {
+         int labelIndex = m_taskLabelCount;
+         ArrayResize(m_taskLabels, labelIndex + 1);
+         m_taskLabelCount = labelIndex + 1;
+         m_taskLabels[labelIndex] = new CLabel();
+
+         const long id = taskArray[i]["id"].ToInt();
+         const string status = taskArray[i]["status"].ToStr();
+         const string recurrence = taskArray[i]["recurrence"].ToStr();
+         const string repeatText = recurrence == "none" || recurrence == "" ? "once" : recurrence;
+         string text = StringFormat("#%d %s | %s | %s | %s | %s",
+                                    (int)id,
+                                    taskArray[i]["name"].ToStr(),
+                                    taskArray[i]["execution_time"].ToStr(),
+                                    repeatText,
+                                    status,
+                                    taskArray[i]["tool_name"].ToStr());
+         int maxChars = MathMax(12, (int)(labelW / ((9.0 * m_dpi / 72.0) * 0.60)));
+         if(StringLen(text) > maxChars)
+            text = StringSubstr(text, 0, maxChars - 3) + "...";
+
+         string labelName = m_panelName + "_Task" + IntegerToString(i);
+         m_taskLabels[labelIndex].Create(NULL, labelName, 0, labelX, yPos, labelX + labelW, yEnd);
+         m_taskLabels[labelIndex].Text(text);
+         m_taskLabels[labelIndex].Color(m_clrAiText);
+         m_taskLabels[labelIndex].ColorBackground(m_clrBg);
+         m_taskLabels[labelIndex].FontSize(9);
+         m_taskLabels[labelIndex].Font("Consolas");
+         m_taskLabels[labelIndex].Show();
+         CDialog::Add(m_taskLabels[labelIndex]);
+
+         if(status == "pending")
+         {
+            int buttonIndex = m_taskCancelBtnCount;
+            ArrayResize(m_taskCancelBtns, buttonIndex + 1);
+            m_taskCancelBtnCount = buttonIndex + 1;
+            m_taskCancelBtns[buttonIndex] = new CButton();
+            m_taskCancelBtns[buttonIndex].Create(NULL, m_panelName + "_TaskCancel" + IntegerToString((int)id), 0, cancelX, yPos, cancelX + cancelW, yEnd);
+            m_taskCancelBtns[buttonIndex].Text("Cancel");
+            m_taskCancelBtns[buttonIndex].FontSize(9);
+            m_taskCancelBtns[buttonIndex].Font("Consolas");
+            m_taskCancelBtns[buttonIndex].Color(m_clrTabText);
+            m_taskCancelBtns[buttonIndex].ColorBackground(m_clrTabInactive);
+            m_taskCancelBtns[buttonIndex].Show();
+            CDialog::Add(m_taskCancelBtns[buttonIndex]);
+         }
+      }
+      yPos += rowH;
    }
 
    ChartRedraw();
@@ -1811,6 +2029,7 @@ bool AIPanel::OnResize(void)
    m_scrollOffset    = MathMax(0, MathMin(m_scrollOffset,    m_chatHeight * 10));
    m_infoScrollOffset = MathMax(0, MathMin(m_infoScrollOffset, m_chatHeight * 10));
    m_sessionScrollOffset = MathMax(0, MathMin(m_sessionScrollOffset, m_chatHeight * 10));
+   m_taskScrollOffset = MathMax(0, MathMin(m_taskScrollOffset, m_chatHeight * 10));
 // Re-render tab content
    if(m_isChatTab)
       RenderMessages();
@@ -1818,6 +2037,11 @@ bool AIPanel::OnResize(void)
    {
       m_sessionScrollOffset = 0;
       RefreshSessionList();
+   }
+   else if(m_isTaskTab)
+   {
+      m_taskScrollOffset = 0;
+      RefreshTaskList();
    }
    else
       PopulateInfoTab();
@@ -1865,6 +2089,10 @@ void AIPanel::PanelChartEvent(const int id, const long &lparam, const double &dp
       {
          if(!m_isSessionTab) SwitchToSession();
       }
+      else if(sparam == m_panelName + "_TabTasks")
+      {
+         if(!m_isTaskTab) SwitchToTasks();
+      }
       else if(sparam == m_panelName + "_NewSession")
       {
          NewSession();
@@ -1878,6 +2106,12 @@ void AIPanel::PanelChartEvent(const int id, const long &lparam, const double &dp
          int idx = (int)StringToInteger(StringSubstr(sparam, StringLen(m_panelName + "_Sess")));
          if(idx >= 0 && idx < ArraySize(m_sessionNames))
             LoadSession(m_sessionNames[idx]);
+      }
+      else if(StringSubstr(sparam, 0, StringLen(m_panelName + "_TaskCancel")) == m_panelName + "_TaskCancel")
+      {
+         uint id = (uint)StringToInteger(StringSubstr(sparam, StringLen(m_panelName + "_TaskCancel")));
+         if(CheckPointer(m_agent) == POINTER_DYNAMIC && m_agent.cancelScheduledTask(id))
+            RefreshTaskList();
       }
       else if(sparam == m_panelName + "_Send")
       {
@@ -1894,6 +2128,11 @@ void AIPanel::PanelChartEvent(const int id, const long &lparam, const double &dp
          {
             m_sessionScrollOffset = MathMax(0, m_sessionScrollOffset - (int)(60 * m_dpiScale));
             RefreshSessionList();
+         }
+         else if(m_isTaskTab)
+         {
+            m_taskScrollOffset = MathMax(0, m_taskScrollOffset - (int)(60 * m_dpiScale));
+            RefreshTaskList();
          }
          else
          {
@@ -1914,6 +2153,12 @@ void AIPanel::PanelChartEvent(const int id, const long &lparam, const double &dp
             int maxScroll = MathMax(0, m_sessionTotalHeight - (m_chatBottom - m_sessionListTop));
             m_sessionScrollOffset = MathMin(maxScroll, m_sessionScrollOffset + (int)(60 * m_dpiScale));
             RefreshSessionList();
+         }
+         else if(m_isTaskTab)
+         {
+            int maxScroll = MathMax(0, m_taskTotalHeight - m_chatHeight);
+            m_taskScrollOffset = MathMin(maxScroll, m_taskScrollOffset + (int)(60 * m_dpiScale));
+            RefreshTaskList();
          }
          else
          {
@@ -1947,6 +2192,15 @@ void AIPanel::OnTickUpdate()
       {
          m_tickCounter = 0;
          PopulateInfoTab();
+      }
+   }
+   else if(m_isTaskTab && m_initialized)
+   {
+      m_tickCounter++;
+      if(m_tickCounter >= 10)
+      {
+         m_tickCounter = 0;
+         RefreshTaskList();
       }
    }
 }
