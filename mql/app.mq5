@@ -671,6 +671,8 @@ bool AIPanel::CreatePanel()
 
    this.Maximize();
 
+   OnResize();
+
 // Show initial tab
    SwitchToSession();
 
