@@ -49,8 +49,8 @@ int OnInit()
       Sleep(1);
    }
 
-   int panelW = (int)(ChartGetInteger(0, CHART_WIDTH_IN_PIXELS) / 2.5);
-   int panelH = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS) - 40;
+   int panelW = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS) - 1;
+   int panelH = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS) - 1;
    panel = new AIPanel("MetaTrader-AI", 0, 0, panelW, panelH, 0);
    if(CheckPointer(panel) != POINTER_DYNAMIC)
    {
