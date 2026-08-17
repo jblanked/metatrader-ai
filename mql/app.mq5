@@ -49,8 +49,9 @@ int OnInit()
       Sleep(1);
    }
 
-   int panelW = (int)(ChartGetInteger(0, CHART_WIDTH_IN_PIXELS) / 2.5);
-   int panelH = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS) - 40;
+   int panelW = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS) - 1;
+   int panelH = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS) - 1;
+   ChartSetInteger(0, CHART_SHOW_ONE_CLICK, false);
    panel = new AIPanel("MetaTrader-AI", 0, 0, panelW, panelH, 0);
    if(CheckPointer(panel) != POINTER_DYNAMIC)
    {
@@ -718,7 +719,21 @@ string AIPanel::SessionDisplayName(string name)
    if(pos < 0) return name;
    long id = StringToInteger(StringSubstr(name, pos + 1));
    if(id <= 0) return name;
-   return TimeToString((datetime)id, TIME_DATE | TIME_MINUTES);
+
+   string date = TimeToString((datetime)id, TIME_DATE | TIME_MINUTES);
+   string preview = sessionPreview(name);
+   if(preview == "") return date;
+
+   int panelW = Width();
+   int scrlSize = (int)(20 * m_dpiScale);
+   int btnW = panelW - scrlSize - m_margin * 3 - (int)(4 * m_dpiScale);
+   double charWidth = (9.0 * m_dpi / 72.0) * 0.60;
+   int maxPreviewChars = (int)(btnW / charWidth) - StringLen(date) - 2;
+   if(maxPreviewChars < 4) return date;
+   if(StringLen(preview) > maxPreviewChars)
+      preview = StringSubstr(preview, 0, maxPreviewChars - 3) + "...";
+
+   return preview + "  " + date;
 }
 
 //+------------------------------------------------------------------+
