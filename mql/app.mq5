@@ -23,6 +23,8 @@ input bool              inpRunSubAgent  = false;                                
 input string            inpPrompt       = "";                                          // Prompt for sub-agent mode
 input string            inpPromptFile   = "";                                          // Prompt file path
 input string            inpResponseFile = "";                                          // Response file path
+#define CHAT_RENDER_SCALE   1.0
+#define MAX_OBJ_TEXT_CHARS  60
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
 //+------------------------------------------------------------------+
@@ -34,7 +36,7 @@ int OnInit()
 
    agent = new Agent(inpApiKey, inpProvider, inpModel, inpLocalUrl, inpThinking);
 
-// Headless: run prompt directly on this instance
+// Headless: run prompt here
    if(inpRunSubAgent)
    {
       g_subAgentHeadless = true;
@@ -100,7 +102,7 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
 //+------------------------------------------------------------------+
 void OnTimer()
 {
-// Headless: run the prompt once and write the result file
+// Headless: run prompt once
    if(g_subAgentHeadless)
    {
       if(!g_subAgentDone)
@@ -141,7 +143,7 @@ void OnTimer()
          string response = agent.run(prompt);
          PrintFormat("[App] Sub-agent response:\n%s", response);
 
-         // Write the result file for the parent to collect
+         // Write result file for parent
          if(inpResponseFile != "")
          {
             CJAVal result;
@@ -188,9 +190,9 @@ struct ChatMessage
 };
 
 //+------------------------------------------------------------------+
-//| AIPanel — AI chat + info panel                                   |
+//| AIPanel — pure chart-object AI panel                             |
 //+------------------------------------------------------------------+
-class AIPanel : public CPanelDraw
+class AIPanel
 {
 private:
    // Tab state
@@ -200,54 +202,48 @@ private:
    bool              m_isTaskTab;
    bool              m_initialized;
 
-   // Tab buttons
-   CButton           m_btnChat;
-   CButton           m_btnInfo;
-   CButton           m_btnSession;
-   CButton           m_btnTasks;
-
-   // Chat components
-   CLabel            *m_msgLabels[];     // array of message label pointers
-   int               m_msgLabelCount;    // number of allocated message labels
+   // Chat data
    ChatMessage       m_messages[];       // message storage
    int               m_messageCount;     // number of stored messages
-   int               m_scrollOffset;     // pixel scroll offset for chat area
+   int               m_scrollOffset;     // chat scroll offset
+   int               m_chatTotalHeight;  // total rendered chat height
 
-   // Session tab components
-   CButton           m_btnNewSession;
-   CButton           *m_sessionBtns[];
-   int               m_sessionBtnCount;
-   string            m_sessionNames[];
+   // Session data
+   string            m_sessionNames[];   // session id list
+   string            m_sessionPreviews[]; // cached preview text
+   string            m_activeSessionName;
    int               m_sessionScrollOffset;
    int               m_sessionTotalHeight;
    int               m_sessionListTop;
 
-   // Task tab components
-   CLabel            *m_taskLabels[];
-   CButton           *m_taskCancelBtns[];
-   int               m_taskLabelCount;
-   int               m_taskCancelBtnCount;
+   // Task data
    int               m_taskScrollOffset;
    int               m_taskTotalHeight;
    int               m_taskListTop;
 
-   // Info tab labels
-   CLabel            *m_infoLabels[];    // info display labels
-   int               m_infoLabelCount;   // number of info labels
+   // Info data
+   int               m_infoScrollOffset;
+   int               m_infoTotalHeight;
 
-   // Input components
-   CEdit             m_txtInput;
-   CButton           m_btnSend;
-   CButton           m_btnCopy;
-   CButton           m_btnScrollUp;
-   CButton           m_btnScrollDown;
-   int               m_copyBtnW;
-   int               m_copyFlashCounter;
+   // Input state
+   bool              m_inputFocused;
+   string            m_inputBuffer;      // buffered input text
+   string            m_localClipboard;   // internal clipboard fallback
+   int               m_inputCursorPos;   // insertion point inside input buffer
+   bool              m_shiftDown;        // shift key pressed state
+   bool              m_ctrlDown;         // control key pressed state
+   bool              m_altDown;          // alt/menu key pressed state
+   int               m_inputMaxChars;    // hard cap for user input
+   int               m_copyFlashCounter; // copy button flash counter
 
    // Agent
    Agent             *m_agent;
+   bool              m_requestPending;   // waiting for AI response
+   string            m_pendingMsg;       // last sent message
 
    // Layout constants
+   int               m_panelW;
+   int               m_panelH;
    int               m_tabHeight;
    int               m_inputAreaHeight;
    int               m_margin;
@@ -255,6 +251,7 @@ private:
    int               m_chatTop;
    int               m_chatBottom;
    int               m_chatHeight;
+   int               m_copyBtnW;
 
    // Colors
    color             m_clrBg;
@@ -277,55 +274,71 @@ private:
 
    // Internal
    string            m_panelName;
-   int               m_tickCounter;      // tick counter for info refresh
-   bool              m_requestPending;   // waiting for AI response
-   string            m_pendingMsg;       // last sent message (for display)
-   bool              m_inputFocused;     // true when chat input is focused
-   string            m_inputBuffer;      // buffered input text (can exceed native edit limit)
-   string            m_localClipboard;   // internal clipboard fallback for copy/paste
-   int               m_inputCursorPos;   // insertion point inside input buffer
-   bool              m_shiftDown;        // shift key pressed state
-   bool              m_ctrlDown;         // control key pressed state
-   bool              m_altDown;          // alt/menu key pressed state
-   int               m_inputMaxChars;    // hard cap for user input
-   int               m_chatTotalHeight;  // total rendered height of chat messages
-   int               m_infoScrollOffset; // scroll offset for info tab
-   int               m_infoTotalHeight;  // total content height of info tab
+   int               m_tickCounter;      // tick counter for periodic refresh
 
-   // Private helpers
-   void              DestroyMessageLabels();
-   void              DestroySessionButtons();
-   void              DestroyTaskControls();
-   void              UpdateChatVisibility(bool show);
-   void              UpdateInfoVisibility(bool show);
-   void              UpdateSessionVisibility(bool show);
-   void              UpdateTaskVisibility(bool show);
+   // Object name tracking
+   string            m_allObjects[];     // every created object name
+   string            m_msgLabels[];      // chat line object names
+   int               m_msgLabelCount;
+   string            m_infoLabels[];     // info label object names
+   int               m_infoLabelCount;
+   string            m_sessionBtns[];    // session button object names
+   int               m_sessionBtnCount;
+   string            m_sessionDeleteBtns[]; // delete button names
+   int               m_sessionDeleteBtnCount;
+   string            m_taskLabels[];     // task label object names
+   int               m_taskLabelCount;
+   string            m_taskCancelBtns[]; // task cancel object names
+   int               m_taskCancelBtnCount;
+   string            m_inputLabels[];    // input text label object names
+   int               m_inputLabelCount;
+
+   // Object helpers
+   void              RegisterObject(const string name);
+   void              CreateButton(const string name, const string text, const int x1, const int y1, const int x2, const int y2, const color textClr, const color bgClr, const int fontSize);
+   void              CreateEditObj(const string name, const int x1, const int y1, const int x2, const int y2, const color textClr, const color bgClr, const int fontSize);
+   void              CreateTextLabel(const string name, const string text, const int x, const int y, const color textClr, const int fontSize);
+   void              SetObjectVisible(const string name, const bool show);
+   void              DestroyAllObjects();
+
+   // Tab helpers
+   void              ApplyTabState();
    void              SwitchToChat();
    void              SwitchToInfo();
    void              SwitchToSession();
    void              SwitchToTasks();
+
+   // Render helpers
    void              RenderMessages();
    void              ClearInfoLabels();
    void              PopulateInfoTab();
+   void              AddInfoRow(int &yPos, int col1X, int col1W, int col2X, int col2W, int labelH, bool isHeader, string key, string val);
+   void              CacheSessionList();
    void              RefreshSessionList();
    void              RefreshTaskList();
-   void              SendCurrentMessage();
-   void              NewSession();
-   void              LoadSession(string name);
    void              ClearChatMessages();
-   void              AppendMessage(string role, string content);
+   void              AppendMessage(const string role, const string content);
    void              LoadConversationFromAgent();
-   void              CopyConversation();
-   string            SessionDisplayName(string name);
    void              RefreshInputText();
-   void              InsertTextAtCursor(string text);
+   string            SessionDisplayName(const string name, string preview);
+
+   // Input helpers
+   void              InsertTextAtCursor(const string text);
    bool              HandleInputKey(const long keyCode);
    string            KeyCodeToChar(const int keyCode, const bool shiftPressed);
    void              SetModifierKeyState(const int keyCode, const bool down);
+   void              SendCurrentMessage();
+   void              NewSession();
+   void              LoadSession(const string name);
+   void              DeleteSession(const string name);
+   void              CopyConversation();
+
+   // Text helpers
    string            FormatTimestamp();
    int               MaxCharsPerLine();
+   int               ChatLabelWidth();
+   int               CalibrateCharWidth(const int fontSize);
    void              WrapText(string text, int maxChars, string &lines[], int &lineCount);
-   void              AddInfoRow(int &yPos, int col1X, int col1W, int col2X, int col2W, int labelH, bool isHeader, string key, string val);
 
 public:
    // Constructor / Destructor
@@ -339,14 +352,15 @@ public:
    );
                     ~AIPanel();
 
-   // Overrides
+   // Lifecycle
    bool              CreatePanel();
-   virtual bool      OnResize(void);
+   void              Destroy(const int reason);
    void              PanelChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam);
    void              OnTickUpdate();
+   bool              OnResize(void);
 
    // Public methods
-   void              AddMessage(string role, string content);
+   void              AddMessage(const string role, const string content);
    void              RefreshInfo();
    void              SetAgent(Agent *ag)
    {
@@ -373,7 +387,7 @@ AIPanel::AIPanel(
    const int x2 = NULL,
    const int y2 = NULL,
    const int subWindow = 0
-) : CPanelDraw(name, x1, y1, x2, y2, subWindow)
+)
 {
    m_isChatTab       = true;
    m_isInfoTab       = false;
@@ -400,15 +414,21 @@ AIPanel::AIPanel(
    m_infoScrollOffset = 0;
    m_infoTotalHeight = 0;
    m_sessionBtnCount = 0;
+   m_sessionDeleteBtnCount = 0;
    m_sessionScrollOffset = 0;
    m_sessionTotalHeight = 0;
    m_sessionListTop  = 0;
+   m_activeSessionName = "";
+   ArrayResize(m_sessionNames, 0);
+   ArrayResize(m_sessionPreviews, 0);
+   ArrayResize(m_sessionDeleteBtns, 0);
    m_taskLabelCount = 0;
    m_taskCancelBtnCount = 0;
    m_taskScrollOffset = 0;
    m_taskTotalHeight = 0;
    m_taskListTop = 0;
    m_copyFlashCounter = 0;
+   m_inputLabelCount = 0;
 
 // DPI scaling
    m_dpi             = (int)TerminalInfoInteger(TERMINAL_SCREEN_DPI);
@@ -444,88 +464,149 @@ AIPanel::AIPanel(
 //+------------------------------------------------------------------+
 AIPanel::~AIPanel()
 {
-   DestroyMessageLabels();
-   DestroySessionButtons();
-   DestroyTaskControls();
-   ClearInfoLabels();
+   DestroyAllObjects();
 }
 
 //+------------------------------------------------------------------+
-//| Destroy message labels                                           |
+//| Destroy panel objects                                            |
 //+------------------------------------------------------------------+
-void AIPanel::DestroyMessageLabels()
+void AIPanel::Destroy(const int reason)
 {
-   for(int i = 0; i < m_msgLabelCount; i++)
-   {
-      if(CheckPointer(m_msgLabels[i]) == POINTER_DYNAMIC)
-      {
-         delete m_msgLabels[i];
-         m_msgLabels[i] = NULL;
-      }
-   }
-   ArrayResize(m_msgLabels, 0);
-   m_msgLabelCount = 0;
+   DestroyAllObjects();
 }
 
 //+------------------------------------------------------------------+
-//| Clear info labels                                                |
+//| Register an object name for cleanup                              |
+//+------------------------------------------------------------------+
+void AIPanel::RegisterObject(const string name)
+{
+   int n = ArraySize(m_allObjects);
+   ArrayResize(m_allObjects, n + 1);
+   m_allObjects[n] = name;
+}
+
+//+------------------------------------------------------------------+
+//| Delete every created object                                      |
+//+------------------------------------------------------------------+
+void AIPanel::DestroyAllObjects()
+{
+   for(int i = 0; i < ArraySize(m_allObjects); i++)
+   {
+      if(m_allObjects[i] != "" && ObjectFind(0, m_allObjects[i]) >= 0)
+         ObjectDelete(0, m_allObjects[i]);
+   }
+   ArrayResize(m_allObjects, 0);
+   ArrayResize(m_msgLabels, 0);
+   ArrayResize(m_infoLabels, 0);
+   ArrayResize(m_sessionBtns, 0);
+   ArrayResize(m_sessionDeleteBtns, 0);
+   ArrayResize(m_taskLabels, 0);
+   ArrayResize(m_taskCancelBtns, 0);
+   ArrayResize(m_inputLabels, 0);
+   m_msgLabelCount = 0;
+   m_infoLabelCount = 0;
+   m_sessionBtnCount = 0;
+   m_sessionDeleteBtnCount = 0;
+   m_taskLabelCount = 0;
+   m_taskCancelBtnCount = 0;
+   m_inputLabelCount = 0;
+}
+
+//+------------------------------------------------------------------+
+//| Create a raw button object                                       |
+//+------------------------------------------------------------------+
+void AIPanel::CreateButton(const string name, const string text, const int x1, const int y1, const int x2, const int y2, const color textClr, const color bgClr, const int fontSize)
+{
+   if(ObjectFind(0, name) >= 0)
+      ObjectDelete(0, name);
+   if(!ObjectCreate(0, name, OBJ_BUTTON, 0, 0, 0))
+      return;
+   ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x1);
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y1);
+   ObjectSetInteger(0, name, OBJPROP_XSIZE, MathMax(1, x2 - x1));
+   ObjectSetInteger(0, name, OBJPROP_YSIZE, MathMax(1, y2 - y1));
+   ObjectSetInteger(0, name, OBJPROP_COLOR, textClr);
+   ObjectSetInteger(0, name, OBJPROP_BGCOLOR, bgClr);
+   ObjectSetInteger(0, name, OBJPROP_BORDER_COLOR, bgClr);
+   ObjectSetInteger(0, name, OBJPROP_ALIGN, ALIGN_CENTER);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fontSize);
+   ObjectSetString(0, name, OBJPROP_FONT, "Consolas");
+   ObjectSetString(0, name, OBJPROP_TEXT, text);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, true);
+   ObjectSetInteger(0, name, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
+   RegisterObject(name);
+}
+
+//+------------------------------------------------------------------+
+//| Create a raw edit object                                         |
+//+------------------------------------------------------------------+
+void AIPanel::CreateEditObj(const string name, const int x1, const int y1, const int x2, const int y2, const color textClr, const color bgClr, const int fontSize)
+{
+   if(ObjectFind(0, name) >= 0)
+      ObjectDelete(0, name);
+   if(!ObjectCreate(0, name, OBJ_EDIT, 0, 0, 0))
+      return;
+   ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x1);
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y1);
+   ObjectSetInteger(0, name, OBJPROP_XSIZE, MathMax(1, x2 - x1));
+   ObjectSetInteger(0, name, OBJPROP_YSIZE, MathMax(1, y2 - y1));
+   ObjectSetInteger(0, name, OBJPROP_COLOR, textClr);
+   ObjectSetInteger(0, name, OBJPROP_BGCOLOR, bgClr);
+   ObjectSetInteger(0, name, OBJPROP_BORDER_COLOR, m_clrBorder);
+   ObjectSetInteger(0, name, OBJPROP_ALIGN, ALIGN_LEFT);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fontSize);
+   ObjectSetString(0, name, OBJPROP_FONT, "Consolas");
+   ObjectSetInteger(0, name, OBJPROP_READONLY, true);
+   ObjectSetString(0, name, OBJPROP_TEXT, "");
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, true);
+   ObjectSetInteger(0, name, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
+   RegisterObject(name);
+}
+
+//+------------------------------------------------------------------+
+//| Create a raw text label object (keep text <= 60 chars)           |
+//+------------------------------------------------------------------+
+void AIPanel::CreateTextLabel(const string name, const string text, const int x, const int y, const color textClr, const int fontSize)
+{
+   if(ObjectFind(0, name) >= 0)
+      ObjectDelete(0, name);
+   if(!ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0))
+      return;
+   ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, textClr);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fontSize);
+   ObjectSetString(0, name, OBJPROP_FONT, "Consolas");
+   ObjectSetString(0, name, OBJPROP_TEXT, text);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, name, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
+   RegisterObject(name);
+}
+
+//+------------------------------------------------------------------+
+//| Show or hide an object via timeframes                            |
+//+------------------------------------------------------------------+
+void AIPanel::SetObjectVisible(const string name, const bool show)
+{
+   if(ObjectFind(0, name) >= 0)
+      ObjectSetInteger(0, name, OBJPROP_TIMEFRAMES, show ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
+}
+
+//+------------------------------------------------------------------+
+//| Delete info labels                                               |
 //+------------------------------------------------------------------+
 void AIPanel::ClearInfoLabels()
 {
    for(int i = 0; i < m_infoLabelCount; i++)
    {
-      if(CheckPointer(m_infoLabels[i]) == POINTER_DYNAMIC)
-      {
-         delete m_infoLabels[i];
-         m_infoLabels[i] = NULL;
-      }
+      if(m_infoLabels[i] != "" && ObjectFind(0, m_infoLabels[i]) >= 0)
+         ObjectDelete(0, m_infoLabels[i]);
    }
    ArrayResize(m_infoLabels, 0);
    m_infoLabelCount = 0;
-}
-
-//+------------------------------------------------------------------+
-//| Destroy session buttons                                          |
-//+------------------------------------------------------------------+
-void AIPanel::DestroySessionButtons()
-{
-   for(int i = 0; i < m_sessionBtnCount; i++)
-   {
-      if(CheckPointer(m_sessionBtns[i]) == POINTER_DYNAMIC)
-      {
-         delete m_sessionBtns[i];
-         m_sessionBtns[i] = NULL;
-      }
-   }
-   ArrayResize(m_sessionBtns, 0);
-   m_sessionBtnCount = 0;
-}
-
-//+------------------------------------------------------------------+
-//| Destroy task controls                                            |
-//+------------------------------------------------------------------+
-void AIPanel::DestroyTaskControls()
-{
-   for(int i = 0; i < m_taskLabelCount; i++)
-   {
-      if(CheckPointer(m_taskLabels[i]) == POINTER_DYNAMIC)
-      {
-         delete m_taskLabels[i];
-         m_taskLabels[i] = NULL;
-      }
-   }
-   for(int i = 0; i < m_taskCancelBtnCount; i++)
-   {
-      if(CheckPointer(m_taskCancelBtns[i]) == POINTER_DYNAMIC)
-      {
-         delete m_taskCancelBtns[i];
-         m_taskCancelBtns[i] = NULL;
-      }
-   }
-   ArrayResize(m_taskLabels, 0);
-   ArrayResize(m_taskCancelBtns, 0);
-   m_taskLabelCount = 0;
-   m_taskCancelBtnCount = 0;
 }
 
 //+------------------------------------------------------------------+
@@ -533,151 +614,122 @@ void AIPanel::DestroyTaskControls()
 //+------------------------------------------------------------------+
 bool AIPanel::CreatePanel()
 {
-// Calculate layout
-   int panelW = Width();
-   int panelH = Height();
-
-   if(panelW < 200) panelW = 300;
-   if(panelH < 200) panelH = 400;
+   m_panelW = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS) - 1;
+   m_panelH = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS) - 1;
+   if(m_panelW < 200) m_panelW = 300;
+   if(m_panelH < 200) m_panelH = 400;
 
    m_chatTop    = m_tabHeight + m_margin;
-   m_chatBottom = panelH - m_inputAreaHeight - m_margin;
+   m_chatBottom = m_panelH - m_inputAreaHeight - m_margin;
    m_chatHeight = m_chatBottom - m_chatTop;
-
    if(m_chatHeight < (int)(50 * m_dpiScale)) m_chatHeight = (int)(50 * m_dpiScale);
 
 // DPI-scaled sizes
    int tabBtnW    = (int)(80 * m_dpiScale);
    int tabBtnGap  = 2;
-   int tabBtnX2   = tabBtnW + tabBtnGap;
    int sendW      = (int)(65 * m_dpiScale);
    int sendH      = (int)(30 * m_dpiScale);
    int inputH     = (int)(30 * m_dpiScale);
    int scrlSize   = (int)(20 * m_dpiScale);
-   int tabFontSz  = 11;
-   int inputFontSz = 11;
-   int scrlFontSz = 9;
 
-// Create tab buttons
-   m_btnChat.Create(NULL, m_panelName + "_TabChat", 0, 0, 0, tabBtnW, m_tabHeight);
-   m_btnChat.Text("Chat");
-   m_btnChat.FontSize(tabFontSz);
-   m_btnChat.Font("Consolas");
-   m_btnChat.Color(m_clrTabText);
-   m_btnChat.ColorBackground(m_clrTabActive);
-   CDialog::Add(m_btnChat);
+// Background rectangle
+   string bgName = m_panelName + "_Bg";
+   if(ObjectFind(0, bgName) >= 0)
+      ObjectDelete(0, bgName);
+   ObjectCreate(0, bgName, OBJ_RECTANGLE_LABEL, 0, 0, 0);
+   ObjectSetInteger(0, bgName, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(0, bgName, OBJPROP_XDISTANCE, 0);
+   ObjectSetInteger(0, bgName, OBJPROP_YDISTANCE, 0);
+   ObjectSetInteger(0, bgName, OBJPROP_XSIZE, m_panelW);
+   ObjectSetInteger(0, bgName, OBJPROP_YSIZE, m_panelH);
+   ObjectSetInteger(0, bgName, OBJPROP_BGCOLOR, m_clrBg);
+   ObjectSetInteger(0, bgName, OBJPROP_BORDER_COLOR, m_clrBorder);
+   ObjectSetInteger(0, bgName, OBJPROP_SELECTABLE, false);
+   RegisterObject(bgName);
 
-   m_btnInfo.Create(NULL, m_panelName + "_TabInfo", 0, tabBtnX2 + tabBtnW, 0, tabBtnX2 + tabBtnW * 2, m_tabHeight);
-   m_btnInfo.Text("Info");
-   m_btnInfo.FontSize(tabFontSz);
-   m_btnInfo.Font("Consolas");
-   m_btnInfo.Color(m_clrTabText);
-   m_btnInfo.ColorBackground(m_clrTabInactive);
-   CDialog::Add(m_btnInfo);
-
-   m_btnSession.Create(NULL, m_panelName + "_TabSession", 0, tabBtnX2 + tabBtnW * 2, 0, tabBtnX2 + tabBtnW * 3, m_tabHeight);
-   m_btnSession.Text("Session");
-   m_btnSession.FontSize(tabFontSz);
-   m_btnSession.Font("Consolas");
-   m_btnSession.Color(m_clrTabText);
-   m_btnSession.ColorBackground(m_clrTabInactive);
-   CDialog::Add(m_btnSession);
-
-   m_btnTasks.Create(NULL, m_panelName + "_TabTasks", 0, tabBtnX2 + tabBtnW * 3, 0, tabBtnX2 + tabBtnW * 4, m_tabHeight);
-   m_btnTasks.Text("Tasks");
-   m_btnTasks.FontSize(tabFontSz);
-   m_btnTasks.Font("Consolas");
-   m_btnTasks.Color(m_clrTabText);
-   m_btnTasks.ColorBackground(m_clrTabInactive);
-   CDialog::Add(m_btnTasks);
+// Tab buttons
+   CreateButton(m_panelName + "_TabChat", "Chat", 0, 0, tabBtnW, m_tabHeight, m_clrTabText, m_clrTabActive, 11);
+   CreateButton(m_panelName + "_TabInfo", "Info", tabBtnW + tabBtnGap, 0, tabBtnW * 2 + tabBtnGap, m_tabHeight, m_clrTabText, m_clrTabInactive, 11);
+   CreateButton(m_panelName + "_TabSession", "Session", tabBtnW * 2 + tabBtnGap * 2, 0, tabBtnW * 3 + tabBtnGap * 2, m_tabHeight, m_clrTabText, m_clrTabInactive, 11);
+   CreateButton(m_panelName + "_TabTasks", "Tasks", tabBtnW * 3 + tabBtnGap * 3, 0, tabBtnW * 4 + tabBtnGap * 3, m_tabHeight, m_clrTabText, m_clrTabInactive, 11);
 
 // Input area
-   int inputY    = panelH - m_inputAreaHeight;
-   int sendX     = panelW - sendW - m_margin;
+   int inputY    = m_panelH - m_inputAreaHeight;
+   int sendX     = m_panelW - sendW - m_margin;
    int copyGap   = (int)(6 * m_dpiScale);
    int copyX     = sendX - m_copyBtnW - copyGap;
    int inputX    = m_margin;
    int inputY_C  = inputY + (m_inputAreaHeight - inputH) / 2;
 
-   m_txtInput.Create(NULL, m_panelName + "_Input", 0, inputX, inputY_C, copyX - m_margin, inputY_C + inputH);
-   m_txtInput.FontSize(inputFontSz);
-   m_txtInput.Font("Consolas");
-   m_txtInput.Color(m_clrAiText);
-   m_txtInput.ColorBackground(m_clrInputBg);
-   m_txtInput.ReadOnly(true);
-   m_txtInput.Text("");
-   m_txtInput.Alignment(WND_ALIGN_WIDTH, m_margin, 0, sendW + m_copyBtnW + copyGap + m_margin, 0);
-   CDialog::Add(m_txtInput);
-
-   m_btnCopy.Create(NULL, m_panelName + "_Copy", 0, copyX, inputY_C, copyX + m_copyBtnW, inputY_C + sendH);
-   m_btnCopy.Text("Copy");
-   m_btnCopy.FontSize(inputFontSz);
-   m_btnCopy.Font("Consolas");
-   m_btnCopy.Color(m_clrTabText);
-   m_btnCopy.ColorBackground(m_clrTabInactive);
-   CDialog::Add(m_btnCopy);
-
-   m_btnSend.Create(NULL, m_panelName + "_Send", 0, sendX, inputY_C, sendX + sendW, inputY_C + sendH);
-   m_btnSend.Text("Send");
-   m_btnSend.FontSize(inputFontSz);
-   m_btnSend.Font("Consolas");
-   m_btnSend.Color(m_clrSendText);
-   m_btnSend.ColorBackground(m_clrSendBtn);
-   m_btnSend.Alignment(WND_ALIGN_RIGHT, 0, 0, m_margin, 0);
-   CDialog::Add(m_btnSend);
+   CreateEditObj(m_panelName + "_Input", inputX, inputY_C, copyX - m_margin, inputY_C + inputH, m_clrAiText, m_clrInputBg, 11);
+   CreateButton(m_panelName + "_Copy", "Copy", copyX, inputY_C, copyX + m_copyBtnW, inputY_C + sendH, m_clrTabText, m_clrTabInactive, 11);
+   CreateButton(m_panelName + "_Send", "Send", sendX, inputY_C, sendX + sendW, inputY_C + sendH, m_clrSendText, m_clrSendBtn, 11);
 
 // Scroll buttons
    int scrollY = m_chatTop + (int)(2 * m_dpiScale);
-   int scrollX = panelW - scrlSize - m_margin;
-
-   m_btnScrollUp.Create(NULL, m_panelName + "_ScrlUp", 0, scrollX, scrollY, scrollX + scrlSize, scrollY + scrlSize);
-   m_btnScrollUp.Text("▲");
-   m_btnScrollUp.FontSize(scrlFontSz);
-   m_btnScrollUp.Font("Consolas");
-   m_btnScrollUp.Color(m_clrTabText);
-   m_btnScrollUp.ColorBackground(m_clrTabInactive);
-   m_btnScrollUp.Alignment(WND_ALIGN_RIGHT, 0, 0, m_margin, 0);
-   CDialog::Add(m_btnScrollUp);
-
-   m_btnScrollDown.Create(NULL, m_panelName + "_ScrlDn", 0, scrollX, scrollY + scrlSize + (int)(2 * m_dpiScale), scrollX + scrlSize, scrollY + scrlSize * 2 + (int)(2 * m_dpiScale));
-   m_btnScrollDown.Text("▼");
-   m_btnScrollDown.FontSize(scrlFontSz);
-   m_btnScrollDown.Font("Consolas");
-   m_btnScrollDown.Color(m_clrTabText);
-   m_btnScrollDown.ColorBackground(m_clrTabInactive);
-   m_btnScrollDown.Alignment(WND_ALIGN_RIGHT, 0, 0, m_margin, 0);
-   CDialog::Add(m_btnScrollDown);
+   int scrollX = m_panelW - scrlSize - m_margin;
+   CreateButton(m_panelName + "_ScrlUp", "▲", scrollX, scrollY, scrollX + scrlSize, scrollY + scrlSize, m_clrTabText, m_clrTabInactive, 9);
+   CreateButton(m_panelName + "_ScrlDn", "▼", scrollX, scrollY + scrlSize + (int)(2 * m_dpiScale), scrollX + scrlSize, scrollY + scrlSize * 2 + (int)(2 * m_dpiScale), m_clrTabText, m_clrTabInactive, 9);
 
 // New Session button
    int newBtnH = (int)(28 * m_dpiScale);
    int newBtnY = m_chatTop + (int)(2 * m_dpiScale);
-   int newBtnW = panelW - scrlSize - m_margin * 3;
-   m_btnNewSession.Create(NULL, m_panelName + "_NewSession", 0, m_margin, newBtnY, m_margin + newBtnW, newBtnY + newBtnH);
-   m_btnNewSession.Text("New Session");
-   m_btnNewSession.FontSize(11);
-   m_btnNewSession.Font("Consolas");
-   m_btnNewSession.Color(m_clrSendText);
-   m_btnNewSession.ColorBackground(m_clrSendBtn);
-   m_btnNewSession.Alignment(WND_ALIGN_WIDTH, m_margin, 0, scrlSize + m_margin, 0);
-   CDialog::Add(m_btnNewSession);
+   int newBtnW = m_panelW - scrlSize - m_margin * 3;
+   CreateButton(m_panelName + "_NewSession", "New Session", m_margin, newBtnY, m_margin + newBtnW, newBtnY + newBtnH, m_clrSendText, m_clrSendBtn, 11);
    m_sessionListTop = newBtnY + newBtnH + m_margin;
 
-// Run dialog
-   if(!this.Run())
-   {
-      Print("Failed to run panel");
-      return false;
-   }
+// Close button
+   int closeSz = (int)(28 * m_dpiScale);
+   int closeX = m_panelW - closeSz - m_margin;
+   CreateButton(m_panelName + "_CloseX", "X", closeX, 0, closeX + closeSz, m_tabHeight, m_clrSendText, m_clrSendBtn, 11);
 
-   this.Maximize();
-
-   OnResize();
-
-// Show initial tab
-   SwitchToSession();
+// Initial tab: Session
+   m_isChatTab    = false;
+   m_isInfoTab    = false;
+   m_isSessionTab = true;
+   m_isTaskTab    = false;
+   CacheSessionList();
+   ApplyTabState();
+   RefreshSessionList();
+   RefreshInputText();
 
    m_initialized = true;
+   ChartRedraw();
    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Apply current tab visibility and colors                          |
+//+------------------------------------------------------------------+
+void AIPanel::ApplyTabState()
+{
+   ObjectSetInteger(0, m_panelName + "_TabChat", OBJPROP_BGCOLOR, m_isChatTab ? m_clrTabActive : m_clrTabInactive);
+   ObjectSetInteger(0, m_panelName + "_TabInfo", OBJPROP_BGCOLOR, m_isInfoTab ? m_clrTabActive : m_clrTabInactive);
+   ObjectSetInteger(0, m_panelName + "_TabSession", OBJPROP_BGCOLOR, m_isSessionTab ? m_clrTabActive : m_clrTabInactive);
+   ObjectSetInteger(0, m_panelName + "_TabTasks", OBJPROP_BGCOLOR, m_isTaskTab ? m_clrTabActive : m_clrTabInactive);
+
+   SetObjectVisible(m_panelName + "_Input", m_isChatTab);
+   SetObjectVisible(m_panelName + "_Send", m_isChatTab);
+   SetObjectVisible(m_panelName + "_Copy", m_isChatTab);
+   SetObjectVisible(m_panelName + "_ScrlUp", true);
+   SetObjectVisible(m_panelName + "_ScrlDn", true);
+   SetObjectVisible(m_panelName + "_NewSession", m_isSessionTab);
+   SetObjectVisible(m_panelName + "_CloseX", true);
+
+   for(int i = 0; i < m_inputLabelCount; i++)
+      SetObjectVisible(m_inputLabels[i], m_isChatTab);
+   for(int i = 0; i < m_msgLabelCount; i++)
+      SetObjectVisible(m_msgLabels[i], m_isChatTab);
+   for(int i = 0; i < m_infoLabelCount; i++)
+      SetObjectVisible(m_infoLabels[i], m_isInfoTab);
+   for(int i = 0; i < m_sessionBtnCount; i++)
+      SetObjectVisible(m_sessionBtns[i], m_isSessionTab);
+   for(int i = 0; i < m_sessionDeleteBtnCount; i++)
+      SetObjectVisible(m_sessionDeleteBtns[i], m_isSessionTab);
+   for(int i = 0; i < m_taskLabelCount; i++)
+      SetObjectVisible(m_taskLabels[i], m_isTaskTab);
+   for(int i = 0; i < m_taskCancelBtnCount; i++)
+      SetObjectVisible(m_taskCancelBtns[i], m_isTaskTab);
 }
 
 //+------------------------------------------------------------------+
@@ -691,18 +743,9 @@ void AIPanel::SwitchToChat()
    m_isTaskTab    = false;
    m_inputFocused = true;
    m_copyFlashCounter = 0;
-   m_btnCopy.Text("Copy");
+   ObjectSetString(0, m_panelName + "_Copy", OBJPROP_TEXT, "Copy");
    RefreshInputText();
-   UpdateChatVisibility(true);
-   UpdateInfoVisibility(false);
-   UpdateSessionVisibility(false);
-   UpdateTaskVisibility(false);
-
-   m_btnChat.ColorBackground(m_clrTabActive);
-   m_btnInfo.ColorBackground(m_clrTabInactive);
-   m_btnSession.ColorBackground(m_clrTabInactive);
-   m_btnTasks.ColorBackground(m_clrTabInactive);
-
+   ApplyTabState();
    ChartRedraw();
 }
 
@@ -717,19 +760,9 @@ void AIPanel::SwitchToInfo()
    m_isTaskTab    = false;
    m_inputFocused = false;
    RefreshInputText();
-   UpdateChatVisibility(false);
-   UpdateInfoVisibility(true);
-   UpdateSessionVisibility(false);
-   UpdateTaskVisibility(false);
-
-   m_btnChat.ColorBackground(m_clrTabInactive);
-   m_btnInfo.ColorBackground(m_clrTabActive);
-   m_btnSession.ColorBackground(m_clrTabInactive);
-   m_btnTasks.ColorBackground(m_clrTabInactive);
-
    m_infoScrollOffset = 0;
    PopulateInfoTab();
-
+   ApplyTabState();
    ChartRedraw();
 }
 
@@ -744,17 +777,8 @@ void AIPanel::SwitchToSession()
    m_isTaskTab    = false;
    m_inputFocused = false;
    RefreshInputText();
-   UpdateChatVisibility(false);
-   UpdateInfoVisibility(false);
-   UpdateSessionVisibility(true);
-   UpdateTaskVisibility(false);
    RefreshSessionList();
-
-   m_btnChat.ColorBackground(m_clrTabInactive);
-   m_btnInfo.ColorBackground(m_clrTabInactive);
-   m_btnSession.ColorBackground(m_clrTabActive);
-   m_btnTasks.ColorBackground(m_clrTabInactive);
-
+   ApplyTabState();
    ChartRedraw();
 }
 
@@ -769,71 +793,20 @@ void AIPanel::SwitchToTasks()
    m_isTaskTab    = true;
    m_inputFocused = false;
    RefreshInputText();
-   UpdateChatVisibility(false);
-   UpdateInfoVisibility(false);
-   UpdateSessionVisibility(false);
-   UpdateTaskVisibility(true);
-
-   m_btnChat.ColorBackground(m_clrTabInactive);
-   m_btnInfo.ColorBackground(m_clrTabInactive);
-   m_btnSession.ColorBackground(m_clrTabInactive);
-   m_btnTasks.ColorBackground(m_clrTabActive);
-
    m_taskScrollOffset = 0;
    RefreshTaskList();
+   ApplyTabState();
    ChartRedraw();
 }
 
 //+------------------------------------------------------------------+
-//| Show/hide session controls                                       |
+//| Session/task visibility is handled by ApplyTabState()            |
 //+------------------------------------------------------------------+
-void AIPanel::UpdateSessionVisibility(bool show)
-{
-   if(show)
-   {
-      m_btnNewSession.Show();
-   }
-   else
-   {
-      m_btnNewSession.Hide();
-   }
-   for(int i = 0; i < m_sessionBtnCount; i++)
-   {
-      if(CheckPointer(m_sessionBtns[i]) == POINTER_DYNAMIC)
-      {
-         if(show) m_sessionBtns[i].Show();
-         else m_sessionBtns[i].Hide();
-      }
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Show/hide task controls                                          |
-//+------------------------------------------------------------------+
-void AIPanel::UpdateTaskVisibility(bool show)
-{
-   for(int i = 0; i < m_taskLabelCount; i++)
-   {
-      if(CheckPointer(m_taskLabels[i]) == POINTER_DYNAMIC)
-      {
-         if(show) m_taskLabels[i].Show();
-         else m_taskLabels[i].Hide();
-      }
-   }
-   for(int i = 0; i < m_taskCancelBtnCount; i++)
-   {
-      if(CheckPointer(m_taskCancelBtns[i]) == POINTER_DYNAMIC)
-      {
-         if(show) m_taskCancelBtns[i].Show();
-         else m_taskCancelBtns[i].Hide();
-      }
-   }
-}
 
 //+------------------------------------------------------------------+
 //| Format a session name into a display label                       |
 //+------------------------------------------------------------------+
-string AIPanel::SessionDisplayName(string name)
+string AIPanel::SessionDisplayName(const string name, string preview)
 {
    int pos = StringFind(name, "_");
    if(pos < 0) return name;
@@ -841,12 +814,13 @@ string AIPanel::SessionDisplayName(string name)
    if(id <= 0) return name;
 
    string date = TimeToString((datetime)id, TIME_DATE | TIME_MINUTES);
-   string preview = sessionPreview(name);
    if(preview == "") return date;
 
-   int panelW = Width();
+   int panelW = m_panelW;
    int scrlSize = (int)(20 * m_dpiScale);
-   int btnW = panelW - scrlSize - m_margin * 3 - (int)(4 * m_dpiScale);
+   int deleteW = (int)(26 * m_dpiScale);
+   int deleteGap = (int)(4 * m_dpiScale);
+   int btnW = panelW - scrlSize - m_margin * 3 - (int)(4 * m_dpiScale) - deleteW - deleteGap;
    double charWidth = (9.0 * m_dpi / 72.0) * 0.60;
    int maxPreviewChars = (int)(btnW / charWidth) - StringLen(date) - 2;
    if(maxPreviewChars < 4) return date;
@@ -857,27 +831,58 @@ string AIPanel::SessionDisplayName(string name)
 }
 
 //+------------------------------------------------------------------+
+//| Cache saved session metadata                                    |
+//+------------------------------------------------------------------+
+void AIPanel::CacheSessionList()
+{
+   int count = sessionList(m_sessionNames);
+   ArrayResize(m_sessionPreviews, count);
+   for(int i = 0; i < count; i++)
+      m_sessionPreviews[i] = sessionPreview(m_sessionNames[i]);
+}
+
+//+------------------------------------------------------------------+
 //| Rebuild the session list buttons                                 |
 //+------------------------------------------------------------------+
 void AIPanel::RefreshSessionList()
 {
-   DestroySessionButtons();
-   int count = sessionList(m_sessionNames);
+   for(int i = 0; i < m_sessionBtnCount; i++)
+   {
+      if(m_sessionBtns[i] != "" && ObjectFind(0, m_sessionBtns[i]) >= 0)
+         ObjectDelete(0, m_sessionBtns[i]);
+   }
+   for(int i = 0; i < m_sessionDeleteBtnCount; i++)
+   {
+      if(m_sessionDeleteBtns[i] != "" && ObjectFind(0, m_sessionDeleteBtns[i]) >= 0)
+         ObjectDelete(0, m_sessionDeleteBtns[i]);
+   }
+   ArrayResize(m_sessionBtns, 0);
+   ArrayResize(m_sessionDeleteBtns, 0);
+   m_sessionBtnCount = 0;
+   m_sessionDeleteBtnCount = 0;
+
+   int count = ArraySize(m_sessionNames);
    if(count == 0)
    {
       m_sessionTotalHeight = 0;
+      ChartRedraw();
       return;
    }
 
-   int panelW = Width();
+   int panelW = m_panelW;
    int scrlSize = (int)(20 * m_dpiScale);
    const int LINE_H = (int)(26 * m_dpiScale);
    const int gap = (int)(4 * m_dpiScale);
+   const int deleteW = (int)(26 * m_dpiScale);
+   const int deleteGap = (int)(4 * m_dpiScale);
    m_sessionTotalHeight = count * LINE_H + (count - 1) * gap;
+   int maxScroll = MathMax(0, m_sessionTotalHeight - (m_chatBottom - m_sessionListTop));
+   m_sessionScrollOffset = MathMin(maxScroll, MathMax(0, m_sessionScrollOffset));
 
    int yPos = m_sessionListTop - m_sessionScrollOffset;
    int btnX = m_margin + (int)(4 * m_dpiScale);
-   int btnW = panelW - scrlSize - m_margin * 3 - (int)(4 * m_dpiScale);
+   int btnW = panelW - scrlSize - m_margin * 3 - (int)(4 * m_dpiScale) - deleteW - deleteGap;
+   int deleteX = btnX + btnW + deleteGap;
 
    for(int i = 0; i < count; i++)
    {
@@ -887,16 +892,18 @@ void AIPanel::RefreshSessionList()
          int n = m_sessionBtnCount;
          ArrayResize(m_sessionBtns, n + 1);
          m_sessionBtnCount = n + 1;
-         m_sessionBtns[n] = new CButton();
-         m_sessionBtns[n].Create(NULL, m_panelName + "_Sess" + IntegerToString(i), 0, btnX, yPos, btnX + btnW, yPos + LINE_H);
-         m_sessionBtns[n].Text(SessionDisplayName(m_sessionNames[i]));
-         m_sessionBtns[n].FontSize(9);
-         m_sessionBtns[n].Font("Consolas");
-         m_sessionBtns[n].Color(m_clrAiText);
-         m_sessionBtns[n].ColorBackground(m_clrTabInactive);
-         if(m_isSessionTab) m_sessionBtns[n].Show();
-         else m_sessionBtns[n].Hide();
-         CDialog::Add(m_sessionBtns[n]);
+         m_sessionBtns[n] = m_panelName + "_Sess" + IntegerToString(i);
+         CreateButton(m_sessionBtns[n], SessionDisplayName(m_sessionNames[i], m_sessionPreviews[i]), btnX, yPos, btnX + btnW, yPos + LINE_H, m_clrAiText, m_clrTabInactive, 9);
+         if(!m_isSessionTab)
+            SetObjectVisible(m_sessionBtns[n], false);
+
+         int d = m_sessionDeleteBtnCount;
+         ArrayResize(m_sessionDeleteBtns, d + 1);
+         m_sessionDeleteBtnCount = d + 1;
+         m_sessionDeleteBtns[d] = m_panelName + "_SessDelete" + IntegerToString(i);
+         CreateButton(m_sessionDeleteBtns[d], "X", deleteX, yPos, deleteX + deleteW, yPos + LINE_H, m_clrTabText, m_clrTabInactive, 9);
+         if(!m_isSessionTab)
+            SetObjectVisible(m_sessionDeleteBtns[d], false);
       }
       yPos += LINE_H + gap;
    }
@@ -909,7 +916,20 @@ void AIPanel::RefreshSessionList()
 //+------------------------------------------------------------------+
 void AIPanel::RefreshTaskList()
 {
-   DestroyTaskControls();
+   for(int i = 0; i < m_taskLabelCount; i++)
+   {
+      if(m_taskLabels[i] != "" && ObjectFind(0, m_taskLabels[i]) >= 0)
+         ObjectDelete(0, m_taskLabels[i]);
+   }
+   for(int i = 0; i < m_taskCancelBtnCount; i++)
+   {
+      if(m_taskCancelBtns[i] != "" && ObjectFind(0, m_taskCancelBtns[i]) >= 0)
+         ObjectDelete(0, m_taskCancelBtns[i]);
+   }
+   ArrayResize(m_taskLabels, 0);
+   ArrayResize(m_taskCancelBtns, 0);
+   m_taskLabelCount = 0;
+   m_taskCancelBtnCount = 0;
 
    if(CheckPointer(m_agent) != POINTER_DYNAMIC)
       return;
@@ -919,7 +939,7 @@ void AIPanel::RefreshTaskList()
       return;
 
    const int count = ArraySize(taskArray.m_e);
-   const int panelW = Width();
+   const int panelW = m_panelW;
    const int scrlSize = (int)(20 * m_dpiScale);
    const int rowH = (int)(34 * m_dpiScale);
    const int cancelW = (int)(58 * m_dpiScale);
@@ -937,15 +957,10 @@ void AIPanel::RefreshTaskList()
    {
       ArrayResize(m_taskLabels, 1);
       m_taskLabelCount = 1;
-      m_taskLabels[0] = new CLabel();
-      m_taskLabels[0].Create(NULL, m_panelName + "_TaskEmpty", 0, labelX, m_taskListTop, labelX + labelW, m_taskListTop + rowH);
-      m_taskLabels[0].Text("No scheduled tasks");
-      m_taskLabels[0].Color(m_clrAiText);
-      m_taskLabels[0].ColorBackground(m_clrBg);
-      m_taskLabels[0].FontSize(10);
-      m_taskLabels[0].Font("Consolas");
-      m_taskLabels[0].Show();
-      CDialog::Add(m_taskLabels[0]);
+      m_taskLabels[0] = m_panelName + "_TaskEmpty";
+      CreateTextLabel(m_taskLabels[0], "No scheduled tasks", labelX, m_taskListTop, m_clrAiText, 10);
+      if(!m_isTaskTab)
+         SetObjectVisible(m_taskLabels[0], false);
       ChartRedraw();
       return;
    }
@@ -958,7 +973,7 @@ void AIPanel::RefreshTaskList()
          int labelIndex = m_taskLabelCount;
          ArrayResize(m_taskLabels, labelIndex + 1);
          m_taskLabelCount = labelIndex + 1;
-         m_taskLabels[labelIndex] = new CLabel();
+         m_taskLabels[labelIndex] = m_panelName + "_Task" + IntegerToString(i);
 
          const long id = taskArray[i]["id"].ToInt();
          const string status = taskArray[i]["status"].ToStr();
@@ -971,34 +986,23 @@ void AIPanel::RefreshTaskList()
                                     repeatText,
                                     status,
                                     taskArray[i]["tool_name"].ToStr());
-         int maxChars = MathMax(12, (int)(labelW / ((9.0 * m_dpi / 72.0) * 0.60)));
+         int maxChars = MathMax(12, MathMin(MAX_OBJ_TEXT_CHARS, (int)(labelW / ((9.0 * m_dpi / 72.0) * 0.60))));
          if(StringLen(text) > maxChars)
             text = StringSubstr(text, 0, maxChars - 3) + "...";
 
-         string labelName = m_panelName + "_Task" + IntegerToString(i);
-         m_taskLabels[labelIndex].Create(NULL, labelName, 0, labelX, yPos, labelX + labelW, yEnd);
-         m_taskLabels[labelIndex].Text(text);
-         m_taskLabels[labelIndex].Color(m_clrAiText);
-         m_taskLabels[labelIndex].ColorBackground(m_clrBg);
-         m_taskLabels[labelIndex].FontSize(9);
-         m_taskLabels[labelIndex].Font("Consolas");
-         m_taskLabels[labelIndex].Show();
-         CDialog::Add(m_taskLabels[labelIndex]);
+         CreateTextLabel(m_taskLabels[labelIndex], text, labelX, yPos, m_clrAiText, 9);
+         if(!m_isTaskTab)
+            SetObjectVisible(m_taskLabels[labelIndex], false);
 
          if(status == "pending")
          {
             int buttonIndex = m_taskCancelBtnCount;
             ArrayResize(m_taskCancelBtns, buttonIndex + 1);
             m_taskCancelBtnCount = buttonIndex + 1;
-            m_taskCancelBtns[buttonIndex] = new CButton();
-            m_taskCancelBtns[buttonIndex].Create(NULL, m_panelName + "_TaskCancel" + IntegerToString((int)id), 0, cancelX, yPos, cancelX + cancelW, yEnd);
-            m_taskCancelBtns[buttonIndex].Text("Cancel");
-            m_taskCancelBtns[buttonIndex].FontSize(9);
-            m_taskCancelBtns[buttonIndex].Font("Consolas");
-            m_taskCancelBtns[buttonIndex].Color(m_clrTabText);
-            m_taskCancelBtns[buttonIndex].ColorBackground(m_clrTabInactive);
-            m_taskCancelBtns[buttonIndex].Show();
-            CDialog::Add(m_taskCancelBtns[buttonIndex]);
+            m_taskCancelBtns[buttonIndex] = m_panelName + "_TaskCancel" + IntegerToString((int)id);
+            CreateButton(m_taskCancelBtns[buttonIndex], "Cancel", cancelX, yPos, cancelX + cancelW, yEnd, m_clrTabText, m_clrTabInactive, 9);
+            if(!m_isTaskTab)
+               SetObjectVisible(m_taskCancelBtns[buttonIndex], false);
          }
       }
       yPos += rowH;
@@ -1018,6 +1022,8 @@ void AIPanel::NewSession()
    string name = m_agent.newSession();
    if(name == "") return;
 
+   m_activeSessionName = name;
+   CacheSessionList();
    ClearChatMessages();
    SwitchToChat();
 }
@@ -1032,67 +1038,38 @@ void AIPanel::LoadSession(string name)
 
    if(!m_agent.loadSession(name)) return;
 
+   m_activeSessionName = name;
+   CacheSessionList();
    ClearChatMessages();
    LoadConversationFromAgent();
    SwitchToChat();
 }
 
 //+------------------------------------------------------------------+
-//| Show/hide chat controls                                          |
+//| Delete a saved session                                           |
 //+------------------------------------------------------------------+
-void AIPanel::UpdateChatVisibility(bool show)
+void AIPanel::DeleteSession(const string name)
 {
-   if(show)
-   {
-      m_txtInput.Show();
-   }
-   else
-   {
-      m_txtInput.Hide();
-   }
-   if(show)
-   {
-      m_btnSend.Show();
-   }
-   else
-   {
-      m_btnSend.Hide();
-   }
-   if(show)
-   {
-      m_btnCopy.Show();
-   }
-   else
-   {
-      m_btnCopy.Hide();
-   }
+   if(m_requestPending) return;
+   if(CheckPointer(m_agent) != POINTER_DYNAMIC) return;
 
-   m_btnScrollUp.Show();
-   m_btnScrollDown.Show();
+   if(name == "" || StringFind(name, "\\") >= 0 || StringFind(name, "/") >= 0)
+      return;
 
-   for(int i = 0; i < m_msgLabelCount; i++)
-   {
-      if(CheckPointer(m_msgLabels[i]) == POINTER_DYNAMIC)
-      {
-         if(show) m_msgLabels[i].Show();
-         else m_msgLabels[i].Hide();
-      }
-   }
-}
+   const string path = "metatrader-ai\\sessions\\" + name + ".json";
+   if(FileIsExist(path, FILE_COMMON) && !FileDelete(path, FILE_COMMON))
+      return;
 
-//+------------------------------------------------------------------+
-//| Show/hide info controls                                          |
-//+------------------------------------------------------------------+
-void AIPanel::UpdateInfoVisibility(bool show)
-{
-   for(int i = 0; i < m_infoLabelCount; i++)
+   if(name == m_activeSessionName)
    {
-      if(CheckPointer(m_infoLabels[i]) == POINTER_DYNAMIC)
-      {
-         if(show) m_infoLabels[i].Show();
-         else m_infoLabels[i].Hide();
-      }
+      m_agent.reset();
+      m_activeSessionName = m_agent.newSession();
+      ClearChatMessages();
    }
+   else if(m_agent.historyCount() <= 1)
+      ClearChatMessages();
+   CacheSessionList();
+   RefreshSessionList();
 }
 
 //+------------------------------------------------------------------+
@@ -1100,14 +1077,29 @@ void AIPanel::UpdateInfoVisibility(bool show)
 //+------------------------------------------------------------------+
 void AIPanel::RefreshInputText()
 {
-   int panelW = Width();
+   const string inputName = m_panelName + "_Input";
    int sendW = (int)(65 * m_dpiScale);
-   int inputPixelW = panelW - (m_margin * 4) - sendW - m_copyBtnW - (int)(6 * m_dpiScale);
+   int copyGap = (int)(6 * m_dpiScale);
+   int panelW = m_panelW;
+   int inputPixelW = panelW - (int)(m_margin * 3) - sendW - m_copyBtnW - copyGap;
    if(inputPixelW < (int)(80 * m_dpiScale))
       inputPixelW = (int)(80 * m_dpiScale);
+   if(ObjectFind(0, inputName) >= 0)
+   {
+      ObjectSetInteger(0, inputName, OBJPROP_XDISTANCE, m_margin);
+      ObjectSetInteger(0, inputName, OBJPROP_XSIZE, inputPixelW);
+   }
 
-   double charWidth = (11.0 * m_dpi / 72.0) * 0.60;
-   int VIEW_MAX = MathMax(8, (int)(inputPixelW / charWidth) - 3);
+// Delete old input text labels
+   for(int i = 0; i < m_inputLabelCount; i++)
+   {
+      if(m_inputLabels[i] != "" && ObjectFind(0, m_inputLabels[i]) >= 0)
+         ObjectDelete(0, m_inputLabels[i]);
+   }
+   ArrayResize(m_inputLabels, 0);
+   m_inputLabelCount = 0;
+
+   int VIEW_MAX = MathMax(8, inputPixelW / CalibrateCharWidth(11) - 3);
 
    int len = StringLen(m_inputBuffer);
 
@@ -1141,7 +1133,32 @@ void AIPanel::RefreshInputText()
    string suffix = ((start + viewLen) < len) ? ">" : "";
    string display = prefix + left + "|" + right + suffix;
 
-   m_txtInput.Text(display);
+   if(ObjectFind(0, inputName) >= 0)
+      ObjectSetString(0, inputName, OBJPROP_TEXT, "");
+
+// Render input as chunked labels
+   int inputH = (int)(30 * m_dpiScale);
+   int inputY_C = m_panelH - m_inputAreaHeight + (m_inputAreaHeight - inputH) / 2;
+   int charW = CalibrateCharWidth(11);
+   int dispLen = StringLen(display);
+   int chunkCount = (dispLen + MAX_OBJ_TEXT_CHARS - 1) / MAX_OBJ_TEXT_CHARS;
+   int chunkX = m_margin + (int)(4 * m_dpiScale);
+   for(int c = 0; c < chunkCount; c++)
+   {
+      string chunk = StringSubstr(display, c * MAX_OBJ_TEXT_CHARS, MAX_OBJ_TEXT_CHARS);
+      int n = m_inputLabelCount;
+      ArrayResize(m_inputLabels, n + 1);
+      m_inputLabelCount = n + 1;
+      m_inputLabels[n] = m_panelName + "_InputC" + IntegerToString(c);
+      CreateTextLabel(m_inputLabels[n], chunk, chunkX, inputY_C + (int)(8 * m_dpiScale), m_clrAiText, 11);
+      if(!m_isChatTab)
+         SetObjectVisible(m_inputLabels[n], false);
+      ChartRedraw();
+      int realW = (int)ObjectGetInteger(0, m_inputLabels[n], OBJPROP_XSIZE);
+      if(realW <= 0)
+         realW = MAX_OBJ_TEXT_CHARS * charW;
+      chunkX += realW;
+   }
 }
 
 //+------------------------------------------------------------------+
@@ -1410,18 +1427,62 @@ bool AIPanel::HandleInputKey(const long keyCode)
 }
 
 //+------------------------------------------------------------------+
+//| Shared Chat label width                                         |
+//+------------------------------------------------------------------+
+int AIPanel::ChatLabelWidth()
+{
+   return m_panelW - (int)(12 * m_dpiScale) - (int)(20 * m_dpiScale);
+}
+
+//+------------------------------------------------------------------+
+//| True rendered monospaced char width                             |
+//+------------------------------------------------------------------+
+int AIPanel::CalibrateCharWidth(const int fontSize)
+{
+   static int calibSize = 0;
+   static int calibWidth = 0;
+   if(calibSize == fontSize && calibWidth > 0)
+      return calibWidth;
+
+   const string calibName = m_panelName + "_CalibW";
+   if(ObjectFind(0, calibName) >= 0)
+      ObjectDelete(0, calibName);
+   ObjectCreate(0, calibName, OBJ_LABEL, 0, 0, 0);
+   ObjectSetInteger(0, calibName, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(0, calibName, OBJPROP_XDISTANCE, 0);
+   ObjectSetInteger(0, calibName, OBJPROP_YDISTANCE, 0);
+   ObjectSetString(0, calibName, OBJPROP_FONT, "Consolas");
+   ObjectSetInteger(0, calibName, OBJPROP_FONTSIZE, fontSize);
+   ObjectSetInteger(0, calibName, OBJPROP_COLOR, clrNONE);
+   ObjectSetString(0, calibName, OBJPROP_TEXT, "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW");
+   ChartRedraw();
+
+   int metric = (int)ObjectGetInteger(0, calibName, OBJPROP_XSIZE);
+   ObjectDelete(0, calibName);
+
+   if(metric > 60)
+   {
+      calibWidth = MathMax(1, (int)((double)metric / 50.0 * CHAT_RENDER_SCALE));
+      calibSize = fontSize;
+   }
+   else
+   {
+      calibWidth = MathMax(1, (int)(fontSize * 0.70 * CHAT_RENDER_SCALE));
+      calibSize = -fontSize;
+   }
+   return calibWidth;
+}
+
+//+------------------------------------------------------------------+
 //| Max chars per line                                               |
 //+------------------------------------------------------------------+
 int AIPanel::MaxCharsPerLine()
 {
-   int panelW = Width();
-   int pad    = (int)(4 * m_dpiScale);
-   int scrollGutter = (int)(20 * m_dpiScale);
-   int labelW = panelW - (m_margin + pad) * 2 - scrollGutter;
-// Consolas char width calc
-// Approx char width ratio
-   double charWidth = (10.0 * m_dpi / 72.0) * 0.60;
-   return MathMax(10, (int)(labelW / charWidth));
+   int labelW = ChatLabelWidth();
+   int maxChars = labelW / CalibrateCharWidth(10);
+   if(maxChars > 2)
+      maxChars -= 2;
+   return MathMax(10, maxChars);
 }
 
 //+------------------------------------------------------------------+
@@ -1622,7 +1683,7 @@ void AIPanel::CopyConversation()
    if(StringLen(text) == 0) return;
    if(!MTTESTER::SetClipboard(text)) return;
    m_copyFlashCounter = 1000;
-   m_btnCopy.Text("Copied!");
+   ObjectSetString(0, m_panelName + "_Copy", OBJPROP_TEXT, "Copied!");
    ChartRedraw();
 }
 
@@ -1631,15 +1692,20 @@ void AIPanel::CopyConversation()
 //+------------------------------------------------------------------+
 void AIPanel::RenderMessages()
 {
-   DestroyMessageLabels();
+   for(int i = 0; i < m_msgLabelCount; i++)
+   {
+      if(m_msgLabels[i] != "" && ObjectFind(0, m_msgLabels[i]) >= 0)
+         ObjectDelete(0, m_msgLabels[i]);
+   }
+   ArrayResize(m_msgLabels, 0);
+   m_msgLabelCount = 0;
 
    if(m_messageCount == 0) return;
 
-   int panelW = Width();
    int maxChars = MaxCharsPerLine();
    const int LINE_H = (int)(18 * m_dpiScale);
    int labelX = m_margin + (int)(4 * m_dpiScale);
-   int labelW = panelW - (m_margin + (int)(4 * m_dpiScale)) * 2 - (int)(20 * m_dpiScale);
+   int labelW = ChatLabelWidth();
    int msgFontSz = 10;
 
    int yPos = m_chatTop + 10 - m_scrollOffset;
@@ -1661,37 +1727,23 @@ void AIPanel::RenderMessages()
          // Only visible labels
          if(yEnd > m_chatTop && yPos < m_chatBottom)
          {
-            int n = m_msgLabelCount;
-            ArrayResize(m_msgLabels, n + 1);
-            m_msgLabelCount = n + 1;
-            m_msgLabels[n] = new CLabel();
-
-            string labelName = m_panelName + "_Msg" + IntegerToString(i) + "_L" + IntegerToString(l);
-
-            if(m_messages[i].role == "user")
+            // Split into chunks under limit
+            int lineLen = StringLen(wrapped[l]);
+            int charW = CalibrateCharWidth(msgFontSz);
+            int chunkCount = (lineLen + MAX_OBJ_TEXT_CHARS - 1) / MAX_OBJ_TEXT_CHARS;
+            for(int c = 0; c < chunkCount; c++)
             {
-               m_msgLabels[n].Create(NULL, labelName, 0, labelX, yPos, labelX + labelW, yPos + LINE_H);
-               m_msgLabels[n].Text(wrapped[l]);
-               m_msgLabels[n].Color(m_clrUserText);
-               m_msgLabels[n].ColorBackground(m_clrUserBubble);
-               m_msgLabels[n].FontSize(msgFontSz);
-               m_msgLabels[n].Font("Consolas");
-            }
-            else
-            {
-               m_msgLabels[n].Create(NULL, labelName, 0, labelX, yPos, labelX + labelW, yPos + LINE_H);
-               m_msgLabels[n].Text(wrapped[l]);
-               m_msgLabels[n].Color(m_clrAiText);
-               m_msgLabels[n].ColorBackground(m_clrAiBubble);
-               m_msgLabels[n].FontSize(msgFontSz);
-               m_msgLabels[n].Font("Consolas");
-            }
+               string chunk = StringSubstr(wrapped[l], c * MAX_OBJ_TEXT_CHARS, MAX_OBJ_TEXT_CHARS);
+               int n = m_msgLabelCount;
+               ArrayResize(m_msgLabels, n + 1);
+               m_msgLabelCount = n + 1;
 
-            m_msgLabels[n].Alignment(WND_ALIGN_WIDTH, labelX, 0, (int)(20 * m_dpiScale) + m_margin, 0);
-
-            if(m_isChatTab) m_msgLabels[n].Show();
-            else m_msgLabels[n].Hide();
-            CDialog::Add(m_msgLabels[n]);
+               string labelName = m_panelName + "_Msg" + IntegerToString(i) + "_L" + IntegerToString(l) + "_C" + IntegerToString(c);
+               m_msgLabels[n] = labelName;
+               CreateTextLabel(labelName, chunk, labelX + c * MAX_OBJ_TEXT_CHARS * charW, yPos, m_messages[i].role == "user" ? m_clrUserText : m_clrAiText, msgFontSz);
+               if(!m_isChatTab)
+                  SetObjectVisible(labelName, false);
+            }
          }
 
          yPos += LINE_H;
@@ -1713,35 +1765,23 @@ void AIPanel::AddInfoRow(int &yPos, int col1X, int col1W, int col2X, int col2W, 
    ArrayResize(m_infoLabels, n + 2);
    m_infoLabelCount = n + 2;
 
-   m_infoLabels[n] = new CLabel();
    string keyName = m_panelName + "_InfoK" + IntegerToString(n);
-   m_infoLabels[n].Create(NULL, keyName, 0, col1X, yPos, col1X + col1W, yPos + labelH);
-   m_infoLabels[n].Text(key);
-   m_infoLabels[n].Color(isHeader ? m_clrAccent : C'160,160,160');
-   m_infoLabels[n].ColorBackground(m_clrBg);
-   int keyFontSz = isHeader ? 11 : 9;
-   int valFontSz = 9;
-   m_infoLabels[n].FontSize(keyFontSz);
-   m_infoLabels[n].Font("Consolas");
-   m_infoLabels[n].Hide();
-   CDialog::Add(m_infoLabels[n]);
+   m_infoLabels[n] = keyName;
+   CreateTextLabel(keyName, key, col1X, yPos, isHeader ? m_clrAccent : C'160,160,160', isHeader ? 11 : 9);
+   if(!m_isInfoTab)
+      SetObjectVisible(keyName, false);
 
-   m_infoLabels[n + 1] = new CLabel();
    string valName = m_panelName + "_InfoV" + IntegerToString(n);
-   m_infoLabels[n + 1].Create(NULL, valName, 0, col2X, yPos, col2X + col2W, yPos + labelH);
+   m_infoLabels[n + 1] = valName;
 // Truncate wide values
 // Char width approx
    double cw = (9.0 * m_dpi / 72.0) * 0.60;
-   int maxValChars = (int)((col2W - 4) / cw) - 1; // -1 for "…"
+   int maxValChars = MathMin(MAX_OBJ_TEXT_CHARS, (int)((col2W - 4) / cw) - 1); // -1 for "…"
    if(maxValChars > 3 && StringLen(val) > maxValChars)
       val = StringSubstr(val, 0, maxValChars - 1) + "…";
-   m_infoLabels[n + 1].Text(val);
-   m_infoLabels[n + 1].Color(m_clrAiText);
-   m_infoLabels[n + 1].ColorBackground(m_clrBg);
-   m_infoLabels[n + 1].FontSize(valFontSz);
-   m_infoLabels[n + 1].Font("Consolas");
-   m_infoLabels[n + 1].Hide();
-   CDialog::Add(m_infoLabels[n + 1]);
+   CreateTextLabel(valName, val, col2X, yPos, m_clrAiText, 9);
+   if(!m_isInfoTab)
+      SetObjectVisible(valName, false);
 
    yPos += labelH;
 }
@@ -1753,7 +1793,7 @@ void AIPanel::PopulateInfoTab()
 {
    ClearInfoLabels();
 
-   int panelW = Width();
+   int panelW = m_panelW;
    int labelH = (int)(16 * m_dpiScale);
    int headerH = (int)(18 * m_dpiScale);
    int sectionGap = (int)(4 * m_dpiScale);
@@ -1774,7 +1814,7 @@ void AIPanel::PopulateInfoTab()
    InfoRow rows[99] = {};
    int rowCount = 0;
 
-   rows[rowCount].key = "── Terminal Info ──";
+   rows[rowCount].key = "Terminal Info";
    rows[rowCount].val = "";
    rows[rowCount].isHdr = true;
    rowCount++;
@@ -1820,7 +1860,7 @@ void AIPanel::PopulateInfoTab()
 
    string symbol = _Symbol;
    int digits    = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
-   rows[rowCount].key = "── Symbol Info ──";
+   rows[rowCount].key = "Symbol Info";
    rows[rowCount].val = "";
    rows[rowCount].isHdr = true;
    rowCount++;
@@ -1867,7 +1907,7 @@ void AIPanel::PopulateInfoTab()
    rows[rowCount].val = EnumToString((ENUM_SYMBOL_TRADE_EXECUTION)SymbolInfoInteger(symbol, SYMBOL_TRADE_EXEMODE));
    rowCount++;
 
-   rows[rowCount].key = "── Account Info ──";
+   rows[rowCount].key = "Account Info";
    rows[rowCount].val = "";
    rows[rowCount].isHdr = true;
    rowCount++;
@@ -1940,9 +1980,6 @@ void AIPanel::PopulateInfoTab()
          yPos += sectionGap;
    }
 
-   if(!m_isChatTab)
-      UpdateInfoVisibility(true);
-
    ChartRedraw();
 }
 
@@ -1954,9 +1991,6 @@ void AIPanel::SendCurrentMessage()
    if(m_requestPending) return;
 
    string inputText = m_inputBuffer;
-   if(StringLen(inputText) == 0)
-      inputText = m_txtInput.Text();
-
    if(StringLen(inputText) == 0) return;
 
    StringTrimLeft(inputText);
@@ -1993,6 +2027,7 @@ void AIPanel::CompletePending(const string response)
    }
 
    AddMessage("assistant", response);
+   CacheSessionList();
 }
 
 //+------------------------------------------------------------------+
@@ -2019,14 +2054,12 @@ string AIPanel::FormatTimestamp()
 //+------------------------------------------------------------------+
 bool AIPanel::OnResize(void)
 {
-   if(!CPanelDraw::OnResize())
-      return (false);
-   int panelW = Width();
-   int panelH = Height();
-   if(panelW < 200) panelW = 300;
-   if(panelH < 200) panelH = 400;
+   m_panelW = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS) - 1;
+   m_panelH = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS) - 1;
+   if(m_panelW < 200) m_panelW = 300;
+   if(m_panelH < 200) m_panelH = 400;
    m_chatTop    = m_tabHeight + m_margin;
-   m_chatBottom = panelH - m_inputAreaHeight - m_margin;
+   m_chatBottom = m_panelH - m_inputAreaHeight - m_margin;
    m_chatHeight = m_chatBottom - m_chatTop;
    if(m_chatHeight < (int)(50 * m_dpiScale))
       m_chatHeight = (int)(50 * m_dpiScale);
@@ -2035,6 +2068,13 @@ bool AIPanel::OnResize(void)
    m_infoScrollOffset = MathMax(0, MathMin(m_infoScrollOffset, m_chatHeight * 10));
    m_sessionScrollOffset = MathMax(0, MathMin(m_sessionScrollOffset, m_chatHeight * 10));
    m_taskScrollOffset = MathMax(0, MathMin(m_taskScrollOffset, m_chatHeight * 10));
+// Resize background rectangle
+   string bgName = m_panelName + "_Bg";
+   if(ObjectFind(0, bgName) >= 0)
+   {
+      ObjectSetInteger(0, bgName, OBJPROP_XSIZE, m_panelW);
+      ObjectSetInteger(0, bgName, OBJPROP_YSIZE, m_panelH);
+   }
 // Re-render tab content
    if(m_isChatTab)
       RenderMessages();
@@ -2073,8 +2113,6 @@ void AIPanel::PanelChartEvent(const int id, const long &lparam, const double &dp
       return;
    }
 
-   CPanelDraw::PanelChartEvent(id, lparam, dparam, sparam);
-
    if(id == CHARTEVENT_OBJECT_CLICK)
    {
       if(sparam == m_panelName + "_Input")
@@ -2106,6 +2144,12 @@ void AIPanel::PanelChartEvent(const int id, const long &lparam, const double &dp
       {
          CopyConversation();
       }
+      else if(StringSubstr(sparam, 0, StringLen(m_panelName + "_SessDelete")) == m_panelName + "_SessDelete")
+      {
+         int idx = (int)StringToInteger(StringSubstr(sparam, StringLen(m_panelName + "_SessDelete")));
+         if(idx >= 0 && idx < ArraySize(m_sessionNames))
+            DeleteSession(m_sessionNames[idx]);
+      }
       else if(StringSubstr(sparam, 0, StringLen(m_panelName + "_Sess")) == m_panelName + "_Sess")
       {
          int idx = (int)StringToInteger(StringSubstr(sparam, StringLen(m_panelName + "_Sess")));
@@ -2121,6 +2165,10 @@ void AIPanel::PanelChartEvent(const int id, const long &lparam, const double &dp
       else if(sparam == m_panelName + "_Send")
       {
          SendCurrentMessage();
+      }
+      else if(sparam == m_panelName + "_CloseX")
+      {
+         ExpertRemove();
       }
       else if(sparam == m_panelName + "_ScrlUp")
       {
@@ -2186,7 +2234,7 @@ void AIPanel::OnTickUpdate()
       {
          m_copyFlashCounter--;
          if(m_copyFlashCounter == 0)
-            m_btnCopy.Text("Copy");
+            ObjectSetString(0, m_panelName + "_Copy", OBJPROP_TEXT, "Copy");
       }
       ChartRedraw();
    }
