@@ -1414,7 +1414,8 @@ int AIPanel::MaxCharsPerLine()
 {
    int panelW = Width();
    int pad    = (int)(4 * m_dpiScale);
-   int labelW = panelW - (m_margin + pad) * 2;
+   int scrollGutter = (int)(20 * m_dpiScale);
+   int labelW = panelW - (m_margin + pad) * 2 - scrollGutter;
 // Consolas char width calc
 // Approx char width ratio
    double charWidth = (10.0 * m_dpi / 72.0) * 0.60;
@@ -1636,7 +1637,7 @@ void AIPanel::RenderMessages()
    int maxChars = MaxCharsPerLine();
    const int LINE_H = (int)(18 * m_dpiScale);
    int labelX = m_margin + (int)(4 * m_dpiScale);
-   int labelW = panelW - (m_margin + (int)(4 * m_dpiScale)) * 2;
+   int labelW = panelW - (m_margin + (int)(4 * m_dpiScale)) * 2 - (int)(20 * m_dpiScale);
    int msgFontSz = 10;
 
    int yPos = m_chatTop + 10 - m_scrollOffset;
