@@ -173,4 +173,37 @@ int sessionList(string &names[])
    return 0;
 #endif
 }
+
+//+------------------------------------------------------------------+
+//| Return a short preview of a saved session                        |
+//+------------------------------------------------------------------+
+string sessionPreview(string filename)
+{
+   const string fullPath = StringFormat("%s%s\\%s.json", FILE_COMMON_FOLDER, SESSION_FOLDER, filename);
+   const string content = fileRead(fullPath);
+   if(content == "") return "";
+
+   CJAVal json;
+   json.Deserialize(content);
+   if(json["messages"].m_type != jtARRAY) return "";
+
+   int count = ArraySize(json["messages"].m_e);
+   for(int i = 0; i < count; i++)
+   {
+      if(json["messages"][i]["role"].ToStr() != "user") continue;
+
+      string preview = json["messages"][i]["content"].ToStr();
+      if(preview == "") continue;
+
+      StringReplace(preview, "\r", " ");
+      StringReplace(preview, "\n", " ");
+      StringTrimLeft(preview);
+      StringTrimRight(preview);
+      if(StringLen(preview) > 42)
+         preview = StringSubstr(preview, 0, 39) + "...";
+      return preview;
+   }
+
+   return "";
+}
 //+------------------------------------------------------------------+
