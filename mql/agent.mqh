@@ -43,6 +43,9 @@ public:
    string            runSubAgent(string prompt);                           // Launch sub-agent on new chart
    string            collectSubAgentsAndWait();                            // Wait for all sub-agents
    string            pollSubAgent(string subAgentId, bool appendToConversation = true); // Collect sub-agent result
+   void              processScheduledTasks();                              // Execute due scheduled tools
+   string            scheduledTasks();                                     // List scheduled tasks
+   bool              cancelScheduledTask(uint id);                         // Cancel a scheduled task
 
 private:
    CJAVal            m_messages;        // persistent conversation history (jtARRAY)
@@ -53,6 +56,7 @@ private:
    LLM               m_llm;             // LLM configuration
    string            m_apiKey;          // API key
    Session           *m_session;        // current session
+   Schedule          *m_schedule;       // persistent scheduled tasks
    ENUM_LLM_PROVIDER m_providerId;      // LLM provider
    ENUM_LLM_MODEL    m_providerModel;   // LLM model
    ENUM_LLM_THINKING m_thinking;        // LLM thinking level
@@ -78,7 +82,8 @@ private:
 Agent::Agent(string apiKey, const ENUM_LLM_PROVIDER providerId, const ENUM_LLM_MODEL providerModel, const string localUrl, const ENUM_LLM_THINKING thinking)
 {
    m_messages.m_type = jtARRAY;
-   m_dispatch        = new Dispatch();
+   m_schedule        = new Schedule();
+   m_dispatch        = new Dispatch(m_schedule);
    addSubAgentTool();
    m_llm             = LLM(providerId, providerModel, localUrl, thinking);
    m_apiKey          = apiKey;
@@ -114,6 +119,11 @@ Agent::~Agent()
    {
       delete m_session;
       m_session = NULL;
+   }
+   if (CheckPointer(m_schedule) == POINTER_DYNAMIC)
+   {
+      delete m_schedule;
+      m_schedule = NULL;
    }
 }
 
@@ -354,6 +364,55 @@ string Agent::run(string prompt)
    }
 
    return ""; // unreachable
+}
+
+//+------------------------------------------------------------------+
+//| Execute due scheduled tool calls                                |
+//+------------------------------------------------------------------+
+void Agent::processScheduledTasks()
+{
+   if(CheckPointer(m_schedule) != POINTER_DYNAMIC || CheckPointer(m_dispatch) != POINTER_DYNAMIC)
+      return;
+
+   const datetime currentTime = TimeCurrent();
+   m_schedule.expireMissedTasks(currentTime);
+
+   for(int i = 0; i < m_schedule.count(); i++)
+   {
+      ScheduleTask task;
+      if(!m_schedule.taskAt(i, task) || !task.shouldExecute(currentTime))
+         continue;
+      if(!m_schedule.markStarted(task.id))
+         continue;
+
+      CJAVal arguments;
+      string result;
+      if(task.arguments == "" || !arguments.Deserialize(task.arguments) || arguments.m_type != jtOBJ)
+         result = "{\"error\":\"stored task arguments are invalid\"}";
+      else
+         result = m_dispatch.execute(task.toolName, arguments);
+
+      m_schedule.finishTask(task.id, result);
+      PrintFormat("[Agent] Scheduled task %u (%s) executed: %s", task.id, task.name, result);
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Return scheduled tasks                                           |
+//+------------------------------------------------------------------+
+string Agent::scheduledTasks()
+{
+   if(CheckPointer(m_schedule) != POINTER_DYNAMIC)
+      return "[]";
+   return m_schedule.list();
+}
+
+//+------------------------------------------------------------------+
+//| Cancel a scheduled task                                          |
+//+------------------------------------------------------------------+
+bool Agent::cancelScheduledTask(uint id)
+{
+   return CheckPointer(m_schedule) == POINTER_DYNAMIC && m_schedule.cancelTask(id);
 }
 
 //+------------------------------------------------------------------+

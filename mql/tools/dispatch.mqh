@@ -20,7 +20,7 @@ public:
    Tool *tools[];
    int   count;
 
-   Dispatch()
+   Dispatch(Schedule *schedule = NULL)
    {
       count = 0;
       ArrayResize(tools, 0);
@@ -82,6 +82,10 @@ public:
       add(new ToolFileWrite());
 
       add(new ToolGetTerminalInfo());
+      add(new ToolGetServerTime());
+      add(new ToolScheduleTask(schedule));
+      add(new ToolListScheduledTasks(schedule));
+      add(new ToolCancelScheduledTask(schedule));
       
       add(new ToolChartClose());
       add(new ToolChartOpen());
