@@ -88,6 +88,8 @@ void OnDeinit(const int reason)
 
    if(CheckPointer(agent) == POINTER_DYNAMIC)
       delete agent;
+   
+   ObjectsDeleteAll(0, "MetaTrader-AI");
 }
 //+------------------------------------------------------------------+
 //| Expert on-event function                                         |
