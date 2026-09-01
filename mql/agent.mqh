@@ -24,6 +24,9 @@
 class Agent
 {
 public:
+   Dispatch          *m_dispatch;       // tool dispatcher
+   Session           *m_session;        // current session
+   Schedule          *m_schedule;       // persistent scheduled tasks
    Agent(
       string apiKey,
       const ENUM_LLM_PROVIDER providerId = LLM_PROVIDER_DEEPSEEK,
@@ -49,14 +52,11 @@ public:
 
 private:
    CJAVal            m_messages;        // persistent conversation history (jtARRAY)
-   Dispatch          *m_dispatch;       // tool dispatcher
    string            m_headers;         // Content-Type + Authorization headers
    bool              m_initialized;     // is initialized
    string            m_deferredImageMsg;// user-role image message deferred until after all tool results
    LLM               m_llm;             // LLM configuration
    string            m_apiKey;          // API key
-   Session           *m_session;        // current session
-   Schedule          *m_schedule;       // persistent scheduled tasks
    ENUM_LLM_PROVIDER m_providerId;      // LLM provider
    ENUM_LLM_MODEL    m_providerModel;   // LLM model
    ENUM_LLM_THINKING m_thinking;        // LLM thinking level
