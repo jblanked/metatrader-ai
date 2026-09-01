@@ -110,6 +110,8 @@ string requestGet(const string url, const string headers)
    int    bytesRead = 0;
    string result    = "";
 
+   ResetLastError();
+
    int hInternet = InternetOpenW(REQUEST_USER_AGENT, 1, NULL, NULL, 0);
    if(!hInternet)
    {
@@ -146,6 +148,8 @@ string requestPost(const string url, const string headers, CJAVal &data)
    {
       return StringFormat("requestPost: Invalid URL: %s", url);
    }
+
+   ResetLastError();
 
    bool isHttps = (scheme == "https");
    uint flags   = INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE;
