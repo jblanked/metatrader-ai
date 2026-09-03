@@ -102,6 +102,16 @@ string readResponse(int hRequest)
 }
 
 //+------------------------------------------------------------------+
+//| Create Response object for error handling                        |
+//+------------------------------------------------------------------+
+string responseError(const string message)
+{
+   CJAVal error;
+   error["error"]["message"] = message;
+   return error.Serialize();
+}
+
+//+------------------------------------------------------------------+
 //| Send a GET request                                               |
 //+------------------------------------------------------------------+
 string requestGet(const string url, const string headers)
@@ -115,14 +125,14 @@ string requestGet(const string url, const string headers)
    int hInternet = InternetOpenW(REQUEST_USER_AGENT, 1, NULL, NULL, 0);
    if(!hInternet)
    {
-      return StringFormat("requestGet: Failed to initialize WinHTTP, Error code: %d", GetLastError());
+      return responseError(StringFormat("Failed to send GET request: Failed to initialize WinHTTP, Error code: %d", GetLastError()));
    }
 
    int hUrl = InternetOpenUrlW(hInternet, url, NULL, 0, 0, 0);
    if(!hUrl)
    {
       InternetCloseHandle(hInternet);
-      return StringFormat("requestGet: Failed to open URL: %s, Error code: %d", url, GetLastError());
+      return responseError(StringFormat("Failed to send GET request: Failed to open URL: %s, Error code: %d", url, GetLastError()));
    }
 
    if(HttpSendRequestW(hUrl, headers, StringLen(headers), buffer, 0))
@@ -140,13 +150,14 @@ string requestGet(const string url, const string headers)
 //+------------------------------------------------------------------+
 string requestPost(const string url, const string headers, CJAVal &data)
 {
+   CJAVal error;
    string result = "";
 
    string scheme, host, path;
    int    port;
    if(!parseUrl(url, scheme, host, port, path))
    {
-      return StringFormat("requestPost: Invalid URL: %s", url);
+      return responseError(StringFormat("Failed to send POST request: (Invalid URL: %s)", url));
    }
 
    ResetLastError();
@@ -163,14 +174,14 @@ string requestPost(const string url, const string headers, CJAVal &data)
    int hInternet = InternetOpenW(REQUEST_USER_AGENT, 1, NULL, NULL, 0);
    if(!hInternet)
    {
-      return StringFormat("requestPost: Failed to initialize WinHTTP, Error code: %d", GetLastError());
+      return responseError(StringFormat("Failed to send POST request: Failed to initialize WinHTTP, Error code: %d", GetLastError()));
    }
 
    int hConnect = InternetConnectW(hInternet, host, port, NULL, NULL, INTERNET_SERVICE_HTTP, 0, 0);
    if(!hConnect)
    {
       InternetCloseHandle(hInternet);
-      return StringFormat("requestPost: Failed to connect to host: %s, Error code: %d", host, GetLastError());
+      return responseError(StringFormat("Failed to send POST request: Failed to connect to host: %s, Error code: %d", host, GetLastError()));
    }
 
    string emptyStr = "";
@@ -179,7 +190,7 @@ string requestPost(const string url, const string headers, CJAVal &data)
    {
       InternetCloseHandle(hConnect);
       InternetCloseHandle(hInternet);
-      return StringFormat("requestPost: Failed to open HTTP request for path: %s, Error code: %d", path, GetLastError());
+      return responseError(StringFormat("Failed to send POST request: Failed to open request for path: %s, Error code: %d", path, GetLastError()));
    }
 
    if(!HttpSendRequestW(hRequest, headerStr, StringLen(headerStr), bodyBytes, bodyLen))
@@ -187,7 +198,7 @@ string requestPost(const string url, const string headers, CJAVal &data)
       InternetCloseHandle(hRequest);
       InternetCloseHandle(hConnect);
       InternetCloseHandle(hInternet);
-      return StringFormat("requestPost: Failed to send HTTP request to %s%s, Error code: %d", host, path, GetLastError());
+      return responseError(StringFormat("Failed to send POST request: Failed to send request to %s%s, Error code: %d", host, path, GetLastError()));
    }
 
    result = readResponse(hRequest);
