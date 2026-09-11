@@ -19,6 +19,57 @@
 #define SUBAGENT_EXE    "Experts\\app.ex5"         // sub-agent expert path
 
 //+------------------------------------------------------------------+
+//| Decode \uXXXX JSON escapes                                       |
+//+------------------------------------------------------------------+
+string decodeUnicodeEscapes(string text)
+{
+   if(StringFind(text, "\\u") < 0)
+      return text;
+
+   string out = "";
+   int len = StringLen(text);
+   int pos = 0;
+   while(pos < len)
+   {
+      int at = StringFind(text, "\\u", pos);
+      if(at < 0)
+      {
+         out += StringSubstr(text, pos);
+         break;
+      }
+
+      out += StringSubstr(text, pos, at - pos);
+
+      ushort code = 0;
+      bool ok = ((at + 5) < len);
+      for(int k = 2; ok && k < 6; k++)
+      {
+         ushort h = StringGetCharacter(text, at + k);
+         int d = -1;
+         if(h >= '0' && h <= '9') d = (int)h - '0';
+         else if(h >= 'a' && h <= 'f') d = (int)h - 'a' + 10;
+         else if(h >= 'A' && h <= 'F') d = (int)h - 'A' + 10;
+         if(d < 0)
+            ok = false;
+         else
+            code = (ushort)(code * 16 + d);
+      }
+
+      if(ok)
+      {
+         out += ShortToString((short)code);
+         pos = at + 6;
+      }
+      else
+      {
+         out += "\\u";
+         pos = at + 2;
+      }
+   }
+   return out;
+}
+
+//+------------------------------------------------------------------+
 //| Agent — wraps multi-turn conversation state and OpenAI API calls |
 //+------------------------------------------------------------------+
 class Agent
@@ -321,7 +372,7 @@ string Agent::run(string prompt)
 
       if (!hasToolCalls)
       {
-         string content = message["content"].ToStr();
+         string content = decodeUnicodeEscapes(message["content"].ToStr());
          pushMessage("assistant", content);
          saveSession();
          return content;
