@@ -13,7 +13,8 @@ enum ENUM_LLM_PROVIDER
    LLM_PROVIDER_DEEPSEEK  = 1, // DeepSeek
    LLM_PROVIDER_ANTHROPIC = 2, // Anthropic
    LLM_PROVIDER_LOCAL     = 3, // Local
-   LLM_PROVIDER_XAI       = 4  // xAI
+   LLM_PROVIDER_XAI       = 4, // xAI
+   LLM_PROVIDER_JBLANKED  = 5  // JBlanked
 };
 
 enum ENUM_LLM_MODEL
@@ -103,8 +104,13 @@ LLM::LLM(const ENUM_LLM_PROVIDER providerId, const int providerModel, const stri
       label = "xAI";
       url   = "https://api.x.ai/v1";
       break;
+   case LLM_PROVIDER_JBLANKED:
+      id    = "jblanked";
+      label = "JBlanked";
+      url   = "https://www.jblanked.com/ai/v1/chat/completions";
+      break;
    default:
-      Alert("Invalid provider_id. Must be 0 (OpenAI), 1 (DeepSeek), 2 (Anthropic), 3 (Local), or 4 (xAI).");
+      Alert("Invalid provider_id. Must be 0 (OpenAI), 1 (DeepSeek), 2 (Anthropic), 3 (Local), 4 (xAI), or 5 (JBlanked).");
       return;
    }
    switch(providerModel)

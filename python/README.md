@@ -1,5 +1,9 @@
 # MetaTrader AI
-An AI-powered trading assistant for MetaTrader 4 and MetaTrader 5! Now you can use AI in your trading strategies.
+An AI-powered trading assistant for MetaTrader 4 and MetaTrader 5! Now you can use AI in your trading strategies. Watch the video below for a quick overview of the features and capabilities of MetaTrader AI.
+
+<a href="http://www.youtube.com/watch?feature=player_embedded&v=xGR-dZTS1P0" target="_blank">
+ <img src="http://img.youtube.com/vi/xGR-dZTS1P0/default.jpg" alt="Watch the video" width="240" height="180" border="1" />
+</a> 
 
 ## Features
 
@@ -24,12 +28,12 @@ An AI-powered trading assistant for MetaTrader 4 and MetaTrader 5! Now you can u
 | Backtesting (optimization) | — | ✅ |
 | Create expert advisors, indicators, and scripts | — | ✅ |
 | Cron jobs (schedule tasks) | — | ✅ |
+| Launch sub-agents | — | ✅ |
 
 ## Requirements
 - Windows operating system (for Python integration, MQL works on all platforms that MetaTrader supports)
 - MetaTrader 5 and Python 3.9.7 or higher for Python integration
 - MetaTrader 4 or MetaTrader 5 for MQL integration
-- OpenAI or DeepSeek API key
 
 ## Installation
 
@@ -68,7 +72,7 @@ launch(
     account_login=...,
     account_password="...",
     broker_server_name="...",
-    model=DEEPSEEK,  # default; use OPENAI for OpenAI
+    model=DEEPSEEK,  
 )
 ```
 
