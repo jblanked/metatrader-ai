@@ -212,9 +212,11 @@ struct STRUCT_READ
 {
   uchar Bytes[sizeof(T)];
 
-  void operator =( const T &Value )
+  void operator =( const T& Value )
   {
-    const STRUCT_TYPE<T> Res = Value;
+    STRUCT_TYPE<T> Res = {};
+
+    Res = Value;
 
     this = _C(STRUCT_READ<T>, Res);
   }
@@ -330,7 +332,8 @@ public:
 #define READ_DEFINE(A, B, C)       \
   static const B Read( const C A ) \
   {                                \
-    const B Res = Value;           \
+    B Res = {};                    \
+    Res = Value;                   \
                                    \
     return(Res);                   \
   }
@@ -339,7 +342,12 @@ public:
   READ_DEFINE(&Value, STRUCT_READ<T>, T)
 
   template <typename T>
-  READ_DEFINE(&Value[], STRUCT_READ_ARRAY, T)
+  static const STRUCT_READ_ARRAY Read( const T &Value[] )
+  {
+    const STRUCT_READ_ARRAY Res(Value);
+
+    return(Res);
+  }
 
 #define M(A) READ_DEFINE(Value, STRUCT_READ<A>, A)
 
