@@ -5,14 +5,19 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026,JBlanked LLC"
 #property link      "https://www.jblanked.com"
-#property version   "1.09"
+#property version   "1.10"
 #property description "MetaTrader-AI: AI trading assistant for MetaTrader 5"
-#property description "Last updated: August 21st, 2026"
+#property description "Last updated: September 11th, 2026"
 #property strict
 
 #include "agent.mqh"
 #include "tools/Panel-Draw.mqh"
 #include <VirtualKeys.mqh>
+
+#define CHAT_RENDER_SCALE   1.0
+#define MAX_OBJ_TEXT_CHARS  60
+#define CHAT_LINE_GAP       10
+#define SESSION_PAGE_MAX    15
 
 input string            inpApiKey       = "sk--";                                      // Your API Key
 input ENUM_LLM_PROVIDER inpProvider     = LLM_PROVIDER_DEEPSEEK;                       // LLM Provider
@@ -23,8 +28,6 @@ input bool              inpRunSubAgent  = false;                                
 input string            inpPrompt       = "";                                          // Prompt for sub-agent mode
 input string            inpPromptFile   = "";                                          // Prompt file path
 input string            inpResponseFile = "";                                          // Response file path
-#define CHAT_RENDER_SCALE   1.0
-#define MAX_OBJ_TEXT_CHARS  60
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
 //+------------------------------------------------------------------+
@@ -88,7 +91,7 @@ void OnDeinit(const int reason)
 
    if(CheckPointer(agent) == POINTER_DYNAMIC)
       delete agent;
-   
+
    ObjectsDeleteAll(0, "MetaTrader-AI");
 }
 //+------------------------------------------------------------------+
@@ -217,6 +220,7 @@ private:
    int               m_sessionScrollOffset;
    int               m_sessionTotalHeight;
    int               m_sessionListTop;
+   int               m_sessionPage;      // current session page
 
    // Task data
    int               m_taskScrollOffset;
@@ -273,6 +277,7 @@ private:
    // DPI
    int               m_dpi;
    double            m_dpiScale;
+   double            m_fontScale;        // DPI-based font scale factor
 
    // Internal
    string            m_panelName;
@@ -337,9 +342,12 @@ private:
 
    // Text helpers
    string            FormatTimestamp();
+   string            stripMarkdown(const string text);
+   string            stripMarkdownLine(string line);
    int               MaxCharsPerLine();
    int               ChatLabelWidth();
    int               CalibrateCharWidth(const int fontSize);
+   int               TextPixelWidth(const string text, const int fontSize);
    void              WrapText(string text, int maxChars, string &lines[], int &lineCount);
 
 public:
@@ -418,6 +426,7 @@ AIPanel::AIPanel(
    m_sessionBtnCount = 0;
    m_sessionDeleteBtnCount = 0;
    m_sessionScrollOffset = 0;
+   m_sessionPage     = 0;
    m_sessionTotalHeight = 0;
    m_sessionListTop  = 0;
    m_activeSessionName = "";
@@ -436,13 +445,14 @@ AIPanel::AIPanel(
    m_dpi             = (int)TerminalInfoInteger(TERMINAL_SCREEN_DPI);
    if(m_dpi < 96) m_dpi = 96;
    m_dpiScale        = (double)m_dpi / 96.0;
+   m_fontScale       = 1.0;                  // Fixed text scale across platforms
    m_copyBtnW        = (int)(55 * m_dpiScale);
 
 // Layout constants
    m_tabHeight       = (int)(28 * m_dpiScale);
    m_inputAreaHeight = (int)(40 * m_dpiScale);
    m_margin          = (int)(4 * m_dpiScale);
-   m_msgSpacing      = (int)(6 * m_dpiScale);
+   m_msgSpacing      = (int)(6 * m_fontScale + 0.5); // Match fixed text scale
 
 // Color scheme
    m_clrBg           = C'30,30,30';        // Dark background
@@ -532,7 +542,7 @@ void AIPanel::CreateButton(const string name, const string text, const int x1, c
    ObjectSetInteger(0, name, OBJPROP_BGCOLOR, bgClr);
    ObjectSetInteger(0, name, OBJPROP_BORDER_COLOR, bgClr);
    ObjectSetInteger(0, name, OBJPROP_ALIGN, ALIGN_CENTER);
-   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fontSize);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, (int)(fontSize * m_fontScale + 0.5));
    ObjectSetString(0, name, OBJPROP_FONT, "Consolas");
    ObjectSetString(0, name, OBJPROP_TEXT, text);
    ObjectSetInteger(0, name, OBJPROP_SELECTABLE, true);
@@ -558,7 +568,7 @@ void AIPanel::CreateEditObj(const string name, const int x1, const int y1, const
    ObjectSetInteger(0, name, OBJPROP_BGCOLOR, bgClr);
    ObjectSetInteger(0, name, OBJPROP_BORDER_COLOR, m_clrBorder);
    ObjectSetInteger(0, name, OBJPROP_ALIGN, ALIGN_LEFT);
-   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fontSize);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, (int)(fontSize * m_fontScale + 0.5));
    ObjectSetString(0, name, OBJPROP_FONT, "Consolas");
    ObjectSetInteger(0, name, OBJPROP_READONLY, true);
    ObjectSetString(0, name, OBJPROP_TEXT, "");
@@ -580,7 +590,7 @@ void AIPanel::CreateTextLabel(const string name, const string text, const int x,
    ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
    ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
    ObjectSetInteger(0, name, OBJPROP_COLOR, textClr);
-   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fontSize);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, (int)(fontSize * m_fontScale + 0.5));
    ObjectSetString(0, name, OBJPROP_FONT, "Consolas");
    ObjectSetString(0, name, OBJPROP_TEXT, text);
    ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
@@ -680,6 +690,16 @@ bool AIPanel::CreatePanel()
    CreateButton(m_panelName + "_NewSession", "New Session", m_margin, newBtnY, m_margin + newBtnW, newBtnY + newBtnH, m_clrSendText, m_clrSendBtn, 11);
    m_sessionListTop = newBtnY + newBtnH + m_margin;
 
+// Session pagination row
+   int pageBtnH  = (int)(24 * m_dpiScale);
+   int pageBtnW  = (int)(60 * m_dpiScale);
+   int pageInfoW = (int)(90 * m_dpiScale);
+   int pageY     = m_panelH - m_inputAreaHeight + (m_inputAreaHeight - pageBtnH) / 2;
+   int pageInfoX = (m_panelW - pageInfoW) / 2;
+   CreateButton(m_panelName + "_PagePrev", "Prev", m_margin, pageY, m_margin + pageBtnW, pageY + pageBtnH, m_clrTabText, m_clrTabInactive, 9);
+   CreateButton(m_panelName + "_PageNext", "Next", m_panelW - m_margin - pageBtnW, pageY, m_panelW - m_margin, pageY + pageBtnH, m_clrTabText, m_clrTabInactive, 9);
+   CreateButton(m_panelName + "_PageInfo", "1/1", pageInfoX, pageY, pageInfoX + pageInfoW, pageY + pageBtnH, m_clrAiText, m_clrTabInactive, 9);
+
 // Close button
    int closeSz = (int)(28 * m_dpiScale);
    int closeX = m_panelW - closeSz - m_margin;
@@ -713,9 +733,12 @@ void AIPanel::ApplyTabState()
    SetObjectVisible(m_panelName + "_Input", m_isChatTab);
    SetObjectVisible(m_panelName + "_Send", m_isChatTab);
    SetObjectVisible(m_panelName + "_Copy", m_isChatTab);
-   SetObjectVisible(m_panelName + "_ScrlUp", true);
-   SetObjectVisible(m_panelName + "_ScrlDn", true);
+   SetObjectVisible(m_panelName + "_ScrlUp", !m_isSessionTab);
+   SetObjectVisible(m_panelName + "_ScrlDn", !m_isSessionTab);
    SetObjectVisible(m_panelName + "_NewSession", m_isSessionTab);
+   SetObjectVisible(m_panelName + "_PagePrev", m_isSessionTab);
+   SetObjectVisible(m_panelName + "_PageNext", m_isSessionTab);
+   SetObjectVisible(m_panelName + "_PageInfo", m_isSessionTab);
    SetObjectVisible(m_panelName + "_CloseX", true);
 
    for(int i = 0; i < m_inputLabelCount; i++)
@@ -838,9 +861,7 @@ string AIPanel::SessionDisplayName(const string name, string preview)
 void AIPanel::CacheSessionList()
 {
    int count = sessionList(m_sessionNames);
-   ArrayResize(m_sessionPreviews, count);
-   for(int i = 0; i < count; i++)
-      m_sessionPreviews[i] = sessionPreview(m_sessionNames[i]);
+   ArrayResize(m_sessionPreviews, count); // Previews load on page render
 }
 
 //+------------------------------------------------------------------+
@@ -867,6 +888,8 @@ void AIPanel::RefreshSessionList()
    if(count == 0)
    {
       m_sessionTotalHeight = 0;
+      m_sessionPage = 0;
+      ObjectSetString(0, m_panelName + "_PageInfo", OBJPROP_TEXT, "0/0");
       ChartRedraw();
       return;
    }
@@ -875,39 +898,55 @@ void AIPanel::RefreshSessionList()
    int scrlSize = (int)(20 * m_dpiScale);
    const int LINE_H = (int)(26 * m_dpiScale);
    const int gap = (int)(4 * m_dpiScale);
+   const int rowH = LINE_H + gap;
    const int deleteW = (int)(26 * m_dpiScale);
    const int deleteGap = (int)(4 * m_dpiScale);
-   m_sessionTotalHeight = count * LINE_H + (count - 1) * gap;
-   int maxScroll = MathMax(0, m_sessionTotalHeight - (m_chatBottom - m_sessionListTop));
-   m_sessionScrollOffset = MathMin(maxScroll, MathMax(0, m_sessionScrollOffset));
+   m_sessionTotalHeight = count * rowH;
 
-   int yPos = m_sessionListTop - m_sessionScrollOffset;
+// Fit page to list height
+   int listH = m_chatBottom - m_sessionListTop;
+   int pageSize = MathMax(1, MathMin(SESSION_PAGE_MAX, listH / rowH));
+   int pageCount = (count + pageSize - 1) / pageSize;
+   if(m_sessionPage >= pageCount)
+      m_sessionPage = pageCount - 1;
+   if(m_sessionPage < 0)
+      m_sessionPage = 0;
+   ObjectSetString(0, m_panelName + "_PageInfo", OBJPROP_TEXT, StringFormat("%d/%d", m_sessionPage + 1, pageCount));
+
+   int first = m_sessionPage * pageSize;
+   int last = MathMin(count, first + pageSize);
+
+   int yPos = m_sessionListTop;
    int btnX = m_margin + (int)(4 * m_dpiScale);
    int btnW = panelW - scrlSize - m_margin * 3 - (int)(4 * m_dpiScale) - deleteW - deleteGap;
    int deleteX = btnX + btnW + deleteGap;
 
-   for(int i = 0; i < count; i++)
+   for(int i = first; i < last; i++)
    {
-      int yEnd = yPos + LINE_H;
-      if(yEnd > m_sessionListTop && yPos < m_chatBottom)
+      string preview = "";
+      if(i < ArraySize(m_sessionPreviews))
       {
-         int n = m_sessionBtnCount;
-         ArrayResize(m_sessionBtns, n + 1);
-         m_sessionBtnCount = n + 1;
-         m_sessionBtns[n] = m_panelName + "_Sess" + IntegerToString(i);
-         CreateButton(m_sessionBtns[n], SessionDisplayName(m_sessionNames[i], m_sessionPreviews[i]), btnX, yPos, btnX + btnW, yPos + LINE_H, m_clrAiText, m_clrTabInactive, 9);
-         if(!m_isSessionTab)
-            SetObjectVisible(m_sessionBtns[n], false);
-
-         int d = m_sessionDeleteBtnCount;
-         ArrayResize(m_sessionDeleteBtns, d + 1);
-         m_sessionDeleteBtnCount = d + 1;
-         m_sessionDeleteBtns[d] = m_panelName + "_SessDelete" + IntegerToString(i);
-         CreateButton(m_sessionDeleteBtns[d], "X", deleteX, yPos, deleteX + deleteW, yPos + LINE_H, m_clrTabText, m_clrTabInactive, 9);
-         if(!m_isSessionTab)
-            SetObjectVisible(m_sessionDeleteBtns[d], false);
+         m_sessionPreviews[i] = sessionPreview(m_sessionNames[i]);
+         preview = m_sessionPreviews[i];
       }
-      yPos += LINE_H + gap;
+
+      int n = m_sessionBtnCount;
+      ArrayResize(m_sessionBtns, n + 1);
+      m_sessionBtnCount = n + 1;
+      m_sessionBtns[n] = m_panelName + "_Sess" + IntegerToString(i);
+      CreateButton(m_sessionBtns[n], SessionDisplayName(m_sessionNames[i], preview), btnX, yPos, btnX + btnW, yPos + LINE_H, m_clrAiText, m_clrTabInactive, 9);
+      if(!m_isSessionTab)
+         SetObjectVisible(m_sessionBtns[n], false);
+
+      int d = m_sessionDeleteBtnCount;
+      ArrayResize(m_sessionDeleteBtns, d + 1);
+      m_sessionDeleteBtnCount = d + 1;
+      m_sessionDeleteBtns[d] = m_panelName + "_SessDelete" + IntegerToString(i);
+      CreateButton(m_sessionDeleteBtns[d], "X", deleteX, yPos, deleteX + deleteW, yPos + LINE_H, m_clrTabText, m_clrTabInactive, 9);
+      if(!m_isSessionTab)
+         SetObjectVisible(m_sessionDeleteBtns[d], false);
+
+      yPos += rowH;
    }
 
    ChartRedraw();
@@ -1025,6 +1064,7 @@ void AIPanel::NewSession()
    if(name == "") return;
 
    m_activeSessionName = name;
+   m_sessionPage = 0;
    CacheSessionList();
    ClearChatMessages();
    SwitchToChat();
@@ -1101,7 +1141,7 @@ void AIPanel::RefreshInputText()
    ArrayResize(m_inputLabels, 0);
    m_inputLabelCount = 0;
 
-   int VIEW_MAX = MathMax(8, inputPixelW / CalibrateCharWidth(11) - 3);
+   int VIEW_MAX = MathMax(8, inputPixelW / CalibrateCharWidth((int)(11 * m_fontScale + 0.5)) - 3);
 
    int len = StringLen(m_inputBuffer);
 
@@ -1155,10 +1195,14 @@ void AIPanel::RefreshInputText()
       CreateTextLabel(m_inputLabels[n], chunk, chunkX, inputY_C + (int)(8 * m_dpiScale), m_clrAiText, 11);
       if(!m_isChatTab)
          SetObjectVisible(m_inputLabels[n], false);
-      ChartRedraw();
-      int realW = (int)ObjectGetInteger(0, m_inputLabels[n], OBJPROP_XSIZE);
+      int realW = TextPixelWidth(chunk, (int)(11 * m_fontScale + 0.5));
       if(realW <= 0)
-         realW = MAX_OBJ_TEXT_CHARS * charW;
+      {
+         ChartRedraw();
+         realW = (int)ObjectGetInteger(0, m_inputLabels[n], OBJPROP_XSIZE);
+      }
+      if(realW <= 0)
+         realW = (int)(MAX_OBJ_TEXT_CHARS * charW * 1.2); // Safe margin
       chunkX += realW;
    }
 }
@@ -1193,14 +1237,14 @@ string AIPanel::KeyCodeToChar(const int keyCode, const bool shiftPressed)
    if(keyCode >= 0x41 && keyCode <= 0x5A)
    {
       int ch = shiftPressed ? keyCode : keyCode + 32;
-      return CharToString((ushort)ch);
+      return CharToString((uchar)(ushort)ch);
    }
 
 // top-row digits
    if(keyCode >= 0x30 && keyCode <= 0x39)
    {
       if(!shiftPressed)
-         return CharToString((ushort)keyCode);
+         return CharToString((uchar)(ushort)keyCode);
 
       switch(keyCode)
       {
@@ -1229,7 +1273,7 @@ string AIPanel::KeyCodeToChar(const int keyCode, const bool shiftPressed)
 
 // numpad digits
    if(keyCode >= VK_NUMPAD0 && keyCode <= VK_NUMPAD9)
-      return CharToString((ushort)(0x30 + (keyCode - VK_NUMPAD0)));
+      return CharToString((uchar)(ushort)(0x30 + (keyCode - VK_NUMPAD0)));
 
 // punctuation
    switch(keyCode)
@@ -1437,6 +1481,29 @@ int AIPanel::ChatLabelWidth()
 }
 
 //+------------------------------------------------------------------+
+//| Text width via terminal font metrics                             |
+//+------------------------------------------------------------------+
+int AIPanel::TextPixelWidth(const string text, const int fontSize)
+{
+   if(StringLen(text) == 0)
+      return 0;
+
+   static int lastFontSize = 0;
+   if(lastFontSize != fontSize)
+   {
+      if(!TextSetFont("Consolas", -(int)(fontSize * m_fontScale * 10.0), 0, 0))
+         return 0;
+      lastFontSize = fontSize;
+   }
+
+   uint w = 0, h = 0;
+   TextGetSize(text, w, h);
+   if(w == 0)
+      return 0;
+   return (int)w;
+}
+
+//+------------------------------------------------------------------+
 //| True rendered monospaced char width                             |
 //+------------------------------------------------------------------+
 int AIPanel::CalibrateCharWidth(const int fontSize)
@@ -1446,6 +1513,15 @@ int AIPanel::CalibrateCharWidth(const int fontSize)
    if(calibSize == fontSize && calibWidth > 0)
       return calibWidth;
 
+// Exact font metrics first
+   int measured = TextPixelWidth("WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW", fontSize);
+   if(measured > 60)
+   {
+      calibWidth = MathMax(1, (int)((double)measured / 50.0 * CHAT_RENDER_SCALE));
+      calibSize = fontSize;
+      return calibWidth;
+   }
+
    const string calibName = m_panelName + "_CalibW";
    if(ObjectFind(0, calibName) >= 0)
       ObjectDelete(0, calibName);
@@ -1454,7 +1530,7 @@ int AIPanel::CalibrateCharWidth(const int fontSize)
    ObjectSetInteger(0, calibName, OBJPROP_XDISTANCE, 0);
    ObjectSetInteger(0, calibName, OBJPROP_YDISTANCE, 0);
    ObjectSetString(0, calibName, OBJPROP_FONT, "Consolas");
-   ObjectSetInteger(0, calibName, OBJPROP_FONTSIZE, fontSize);
+   ObjectSetInteger(0, calibName, OBJPROP_FONTSIZE, (int)(fontSize * m_fontScale + 0.5));
    ObjectSetInteger(0, calibName, OBJPROP_COLOR, clrNONE);
    ObjectSetString(0, calibName, OBJPROP_TEXT, "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW");
    ChartRedraw();
@@ -1469,7 +1545,7 @@ int AIPanel::CalibrateCharWidth(const int fontSize)
    }
    else
    {
-      calibWidth = MathMax(1, (int)(fontSize * 0.70 * CHAT_RENDER_SCALE));
+      calibWidth = MathMax(1, (int)(fontSize * m_fontScale * 0.70 * CHAT_RENDER_SCALE + 0.5));
       calibSize = -fontSize;
    }
    return calibWidth;
@@ -1481,7 +1557,8 @@ int AIPanel::CalibrateCharWidth(const int fontSize)
 int AIPanel::MaxCharsPerLine()
 {
    int labelW = ChatLabelWidth();
-   int maxChars = labelW / CalibrateCharWidth(10);
+   int baseFontSz = (int)(10 * m_fontScale + 0.5);
+   int maxChars = labelW / CalibrateCharWidth(baseFontSz);
    if(maxChars > 2)
       maxChars -= 2;
    return MathMax(10, maxChars);
@@ -1576,6 +1653,96 @@ void AIPanel::WrapText(string text, int maxChars, string &lines[], int &lineCoun
 }
 
 //+------------------------------------------------------------------+
+//| Strip markdown tokens from one line                              |
+//+------------------------------------------------------------------+
+string AIPanel::stripMarkdownLine(string line)
+{
+// Header prefix
+   int i = 0;
+   while(i < StringLen(line) && i < 6 && StringSubstr(line, i, 1) == "#")
+      i++;
+   if(i > 0 && StringSubstr(line, i, 1) == " ")
+      line = StringSubstr(line, i + 1);
+
+// Star bullet to dash
+   if(StringSubstr(line, 0, 2) == "* ")
+      line = "- " + StringSubstr(line, 2);
+
+// Horizontal rule to blank
+   bool rule = (StringLen(line) > 0);
+   int ruleChars = 0;
+   for(int c = 0; c < StringLen(line); c++)
+   {
+      string ch = StringSubstr(line, c, 1);
+      if(ch == "-" || ch == "*" || ch == "_")
+         ruleChars++;
+      else if(ch != " ")
+      {
+         rule = false;
+         break;
+      }
+   }
+   if(rule && ruleChars >= 3)
+      return "";
+
+// Bold, strike, code markers
+   StringReplace(line, "**", "");
+   StringReplace(line, "__", "");
+   StringReplace(line, "~~", "");
+   StringReplace(line, "`", "");
+
+// Paired single asterisks
+   while(true)
+   {
+      int a = StringFind(line, "*");
+      if(a < 0)
+         break;
+      int b = StringFind(line, "*", a + 1);
+      if(b < 0)
+         break;
+      if(b > a + 1 && StringSubstr(line, a + 1, 1) != " " && StringSubstr(line, b - 1, 1) != " ")
+         line = StringSubstr(line, 0, a) + StringSubstr(line, a + 1, b - a - 1) + StringSubstr(line, b + 1);
+      else
+         break;
+   }
+
+   return line;
+}
+
+//+------------------------------------------------------------------+
+//| Strip markdown from multi-line text                              |
+//+------------------------------------------------------------------+
+string AIPanel::stripMarkdown(const string text)
+{
+   if(text == "")
+      return text;
+
+   string out = "";
+   int len = StringLen(text);
+   int pos = 0;
+   while(pos <= len)
+   {
+      int nl = StringFind(text, "\n", pos);
+      string line;
+      if(nl < 0)
+      {
+         line = StringSubstr(text, pos);
+         pos = len + 1;
+      }
+      else
+      {
+         line = StringSubstr(text, pos, nl - pos);
+         pos = nl + 1;
+      }
+
+      if(StringLen(out) > 0)
+         out += "\n";
+      out += stripMarkdownLine(line);
+   }
+   return out;
+}
+
+//+------------------------------------------------------------------+
 //| Add chat message                                                 |
 //+------------------------------------------------------------------+
 void AIPanel::AppendMessage(string role, string content)
@@ -1583,7 +1750,7 @@ void AIPanel::AppendMessage(string role, string content)
    int idx = m_messageCount;
    ArrayResize(m_messages, m_messageCount + 1);
    m_messages[idx].role    = role;
-   m_messages[idx].content = content;
+   m_messages[idx].content = stripMarkdown(content);
    m_messages[idx].time    = FormatTimestamp();
    m_messageCount++;
 
@@ -1621,7 +1788,7 @@ void AIPanel::AppendMessage(string role, string content)
          }
       }
    }
-   const int LINE_H = (int)(18 * m_dpiScale);
+   const int LINE_H = (int)(18 * m_fontScale + 0.5) + CHAT_LINE_GAP;
    m_chatTotalHeight = totalLines * LINE_H + m_messageCount * m_msgSpacing + 10;
 
 // Auto-scroll to bottom
@@ -1705,10 +1872,10 @@ void AIPanel::RenderMessages()
    if(m_messageCount == 0) return;
 
    int maxChars = MaxCharsPerLine();
-   const int LINE_H = (int)(18 * m_dpiScale);
-   int labelX = m_margin + (int)(4 * m_dpiScale);
+   const int LINE_H = (int)(18 * m_fontScale + 0.5) + CHAT_LINE_GAP;
+   int labelX = m_margin + (int)(4 * m_fontScale + 0.5);
    int labelW = ChatLabelWidth();
-   int msgFontSz = 10;
+   int msgFontSz = (int)(10 * m_fontScale + 0.5);
 
    int yPos = m_chatTop + 10 - m_scrollOffset;
 
@@ -1733,6 +1900,7 @@ void AIPanel::RenderMessages()
             int lineLen = StringLen(wrapped[l]);
             int charW = CalibrateCharWidth(msgFontSz);
             int chunkCount = (lineLen + MAX_OBJ_TEXT_CHARS - 1) / MAX_OBJ_TEXT_CHARS;
+            int chunkX = labelX;
             for(int c = 0; c < chunkCount; c++)
             {
                string chunk = StringSubstr(wrapped[l], c * MAX_OBJ_TEXT_CHARS, MAX_OBJ_TEXT_CHARS);
@@ -1742,9 +1910,19 @@ void AIPanel::RenderMessages()
 
                string labelName = m_panelName + "_Msg" + IntegerToString(i) + "_L" + IntegerToString(l) + "_C" + IntegerToString(c);
                m_msgLabels[n] = labelName;
-               CreateTextLabel(labelName, chunk, labelX + c * MAX_OBJ_TEXT_CHARS * charW, yPos, m_messages[i].role == "user" ? m_clrUserText : m_clrAiText, msgFontSz);
+               CreateTextLabel(labelName, chunk, chunkX, yPos, m_messages[i].role == "user" ? m_clrUserText : m_clrAiText, msgFontSz);
                if(!m_isChatTab)
                   SetObjectVisible(labelName, false);
+
+               int chunkW = TextPixelWidth(chunk, msgFontSz);
+               if(chunkW <= 0)
+               {
+                  ChartRedraw();
+                  chunkW = (int)ObjectGetInteger(0, labelName, OBJPROP_XSIZE);
+               }
+               if(chunkW <= 0)
+                  chunkW = (int)(StringLen(chunk) * charW * 1.2); // Safe margin
+               chunkX += chunkW;
             }
          }
 
@@ -1769,7 +1947,7 @@ void AIPanel::AddInfoRow(int &yPos, int col1X, int col1W, int col2X, int col2W, 
 
    string keyName = m_panelName + "_InfoK" + IntegerToString(n);
    m_infoLabels[n] = keyName;
-   CreateTextLabel(keyName, key, col1X, yPos, isHeader ? m_clrAccent : C'160,160,160', isHeader ? 11 : 9);
+   CreateTextLabel(keyName, key, col1X, yPos, isHeader ? m_clrAccent : C'160,160,160', isHeader ? (int)(11 * m_fontScale + 0.5) : (int)(9 * m_fontScale + 0.5));
    if(!m_isInfoTab)
       SetObjectVisible(keyName, false);
 
@@ -1781,7 +1959,7 @@ void AIPanel::AddInfoRow(int &yPos, int col1X, int col1W, int col2X, int col2W, 
    int maxValChars = MathMin(MAX_OBJ_TEXT_CHARS, (int)((col2W - 4) / cw) - 1); // -1 for "…"
    if(maxValChars > 3 && StringLen(val) > maxValChars)
       val = StringSubstr(val, 0, maxValChars - 1) + "…";
-   CreateTextLabel(valName, val, col2X, yPos, m_clrAiText, 9);
+   CreateTextLabel(valName, val, col2X, yPos, m_clrAiText, (int)(9 * m_fontScale + 0.5));
    if(!m_isInfoTab)
       SetObjectVisible(valName, false);
 
@@ -1803,8 +1981,8 @@ void AIPanel::PopulateInfoTab()
    int col1W = (int)(130 * m_dpiScale);
    int col2X = col1X + col1W;
    int col2W = panelW - col2X - m_margin - (int)(4 * m_dpiScale);
-   int infoFontSz = (int)(9 * m_dpiScale);
-   int headerFontSz = (int)(11 * m_dpiScale);
+   int infoFontSz = (int)(9 * m_fontScale + 0.5);
+   int headerFontSz = (int)(11 * m_fontScale + 0.5);
 
 // Two-pass height calc
    struct InfoRow
@@ -2145,6 +2323,19 @@ void AIPanel::PanelChartEvent(const int id, const long &lparam, const double &dp
       else if(sparam == m_panelName + "_Copy")
       {
          CopyConversation();
+      }
+      else if(sparam == m_panelName + "_PagePrev")
+      {
+         if(m_sessionPage > 0)
+         {
+            m_sessionPage--;
+            RefreshSessionList();
+         }
+      }
+      else if(sparam == m_panelName + "_PageNext")
+      {
+         m_sessionPage++;
+         RefreshSessionList();
       }
       else if(StringSubstr(sparam, 0, StringLen(m_panelName + "_SessDelete")) == m_panelName + "_SessDelete")
       {
