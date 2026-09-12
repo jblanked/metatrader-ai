@@ -43,8 +43,7 @@ enum ENUM_LLM_MODEL
    LLM_MODEL_LOCAL_LLAMA3_2_1B    = 20, // llama3.2:1b (local)
    LLM_MODEL_XAI_GROK_4_5         = 21, // grok-4.5 (xAI)
    LLM_MODEL_XAI_GROK_4_3         = 22, // grok-4.3 (xAI)
-   LLM_MODEL_XAI_GROK_4_20        = 23, // grok-4.20 (xAI)
-   LLM_MODEL_XAI_GROK_BUILD_0_1   = 24, // grok-build-0.1 (xAI)
+   LLM_MODEL_XAI_GROK_4_6         = 23, // grok-4.6 (xAI)
 };
 
 enum ENUM_LLM_THINKING
@@ -102,7 +101,7 @@ LLM::LLM(const ENUM_LLM_PROVIDER providerId, const int providerModel, const stri
    case LLM_PROVIDER_XAI:
       id    = "xai";
       label = "xAI";
-      url   = "https://api.x.ai/v1";
+      url   = "https://api.x.ai/v1/chat/completions";
       break;
    case LLM_PROVIDER_JBLANKED:
       id    = "jblanked";
@@ -184,11 +183,8 @@ LLM::LLM(const ENUM_LLM_PROVIDER providerId, const int providerModel, const stri
    case LLM_MODEL_XAI_GROK_4_3:
       model = "grok-4.3";
       break;
-   case LLM_MODEL_XAI_GROK_4_20:
-      model = "grok-4.20";
-      break;
-   case LLM_MODEL_XAI_GROK_BUILD_0_1:
-      model = "grok-build-0.1";
+   case LLM_MODEL_XAI_GROK_4_6:
+      model = "grok-4.6";
       break;
    default:
       model = "";
