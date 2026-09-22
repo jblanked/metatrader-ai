@@ -31,19 +31,20 @@ enum ENUM_LLM_MODEL
    LLM_MODEL_ANTHROPIC_SONNET_5   = 8,  // claude-sonnet-5
    LLM_MODEL_ANTHROPIC_OPUS_4_8   = 9,  // claude-opus-4-8
    LLM_MODEL_ANTHROPIC_OPUS_5     = 10, // claude-opus-5
-   LLM_MODEL_ANTHROPIC_FABLE_5    = 11, // claude-fable-5
+   LLM_MODEL_ANTHROPIC_FABLE_5_1  = 11, // claude-fable-5-1
    LLM_MODEL_ANTHROPIC_HAIKU_4_5  = 12, // claude-haiku-4-5-20251001
-   LLM_MODEL_DEEPSEEK_V4_FLASH    = 13, // deepseek-v4-flash
+   LLM_MODEL_DEEPSEEK_V4_FLASH    = 13, // deepseek-flash
    LLM_MODEL_DEEPSEEK_V4_PRO      = 14, // deepseek-v4-pro
    LLM_MODEL_LOCAL_NONE           = 15, // local (no model)
-   LLM_MODEL_LOCAL_QWEN3_5_9B     = 16, // qwen3.5:9b (local)
-   LLM_MODEL_LOCAL_QWEN3_5_4B     = 17, // qwen3.5:4b (local)
-   LLM_MODEL_LOCAL_QWEN3_5_2B     = 18, // qwen3.5:2b (local)
-   LLM_MODEL_LOCAL_LLAMA3_2_3B    = 19, // llama3.2:3b (local)
-   LLM_MODEL_LOCAL_LLAMA3_2_1B    = 20, // llama3.2:1b (local)
-   LLM_MODEL_XAI_GROK_4_5         = 21, // grok-4.5 (xAI)
-   LLM_MODEL_XAI_GROK_4_3         = 22, // grok-4.3 (xAI)
+   LLM_MODEL_LOCAL_QWEN3_8_27B    = 16, // qwen3.8:27b (local)
+   LLM_MODEL_LOCAL_QWEN3_5_9B     = 17, // qwen3.5:9b (local)
+   LLM_MODEL_LOCAL_QWEN3_5_4B     = 18, // qwen3.5:4b (local)
+   LLM_MODEL_LOCAL_QWEN3_5_2B     = 19, // qwen3.5:2b (local)
+   LLM_MODEL_LOCAL_LLAMA3_2_3B    = 20, // llama3.2:3b (local)
+   LLM_MODEL_LOCAL_LLAMA3_2_1B    = 21, // llama3.2:1b (local)
+   LLM_MODEL_XAI_GROK_4_5         = 22, // grok-4.5 (xAI)
    LLM_MODEL_XAI_GROK_4_6         = 23, // grok-4.6 (xAI)
+   LLM_MODEL_XAI_GROK_4_7         = 24, // grok-4.7 (xAI)
 };
 
 enum ENUM_LLM_THINKING
@@ -147,14 +148,14 @@ LLM::LLM(const ENUM_LLM_PROVIDER providerId, const int providerModel, const stri
    case LLM_MODEL_ANTHROPIC_OPUS_5:
       model = "claude-opus-5";
       break;
-   case LLM_MODEL_ANTHROPIC_FABLE_5:
-      model = "claude-fable-5";
+   case LLM_MODEL_ANTHROPIC_FABLE_5_1:
+      model = "claude-fable-5-1";
       break;
    case LLM_MODEL_ANTHROPIC_HAIKU_4_5:
       model = "claude-haiku-4-5-20251001";
       break;
    case LLM_MODEL_DEEPSEEK_V4_FLASH:
-      model = "deepseek-v4-flash";
+      model = "deepseek-flash";
       break;
    case LLM_MODEL_DEEPSEEK_V4_PRO:
       model = "deepseek-v4-pro";
@@ -180,11 +181,11 @@ LLM::LLM(const ENUM_LLM_PROVIDER providerId, const int providerModel, const stri
    case LLM_MODEL_XAI_GROK_4_5:
       model = "grok-4.5";
       break;
-   case LLM_MODEL_XAI_GROK_4_3:
-      model = "grok-4.3";
-      break;
    case LLM_MODEL_XAI_GROK_4_6:
       model = "grok-4.6";
+      break;
+   case LLM_MODEL_XAI_GROK_4_7:
+      model = "grok-4.7";
       break;
    default:
       model = "";

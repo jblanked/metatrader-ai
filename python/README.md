@@ -173,7 +173,7 @@ Or compile and run `app.mq5` (in `metatrader-ai/mql`) to get an on-chart chat pa
 
 ## Notes
 -  I am available for hire to integrate your strategy into the system, with advanced prompts and multi layer thinking: https://www.jblanked.com/coding-request/
-- In the Python environment, two LLM providers are supported: DeepSeek (`deepseek-v4-flash`, default) and OpenAI (`gpt-5.4-mini`). Switch with `--provider` in the CLI or `model=OPENAI` / `model=DEEPSEEK` (from `metatrader_ai.llm`) in code. In MQL, switch providers and models with the `providerId` and `providerModel` parameters when creating the Agent (e.g. `LLM_PROVIDER_OPENAI` with `OPENAI_MODEL_GPT_5_4_MINI`).
+- In the Python environment, two LLM providers are supported: DeepSeek (`deepseek-flash`, default) and OpenAI (`gpt-5.4-mini`). Switch with `--provider` in the CLI or `model=OPENAI` / `model=DEEPSEEK` (from `metatrader_ai.llm`) in code. In MQL, switch providers and models with the `providerId` and `providerModel` parameters when creating the Agent (e.g. `LLM_PROVIDER_OPENAI` with `OPENAI_MODEL_GPT_5_4_MINI`).
 - The python environment works best directly inside of MetaTrader5, but if you run it from a Windows terminal, you should open up MetaTrader5 and log in to your account first, then run the python script for the best experience. The script attempts to open and login to MetaTrader5 if it is not already open.
 
 ## Disclaimer
