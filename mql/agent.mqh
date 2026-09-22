@@ -78,28 +78,28 @@ public:
    Dispatch          *m_dispatch;       // tool dispatcher
    Session           *m_session;        // current session
    Schedule          *m_schedule;       // persistent scheduled tasks
-   Agent(
+                     Agent(
       string apiKey,
       const ENUM_LLM_PROVIDER providerId = LLM_PROVIDER_DEEPSEEK,
       const ENUM_LLM_MODEL providerModel = LLM_MODEL_DEEPSEEK_V4_FLASH,
       const string localUrl = "http://127.0.0.1:8080/v1/chat/completions",
       const ENUM_LLM_THINKING thinking = LLM_THINKING_MEDIUM
-   );                                                                      // Constructor
-   ~Agent();                                              // Deconstructor
-   void              reset();                                              // Clear conversation history while preserving the system message
-   string            run(string prompt);                                   // Process one user turn and return the assistant's final text response
-   bool              hasSession();                                         // True when an active session exists
-   string            newSession();                                         // Start a new session and reset history
-   bool              loadSession(string name);                             // Load a saved session into history
-   void              saveSession();                                        // Persist the current conversation
-   int               historyCount();                                       // Number of conversation messages
-   bool              historyMessage(int i, string &role, string &content); // Read a conversation entry
-   string            runSubAgent(string prompt);                           // Launch sub-agent on new chart
-   string            collectSubAgentsAndWait();                            // Wait for all sub-agents
-   string            pollSubAgent(string subAgentId, bool appendToConversation = true); // Collect sub-agent result
-   void              processScheduledTasks();                              // Execute due scheduled tools
-   string            scheduledTasks();                                     // List scheduled tasks
-   bool              cancelScheduledTask(uint id);                         // Cancel a scheduled task
+   );                                                                                  // Constructor
+                    ~Agent();                                                                           // Deconstructor
+   void              reset();                                                          // Clear conversation history while preserving the system message
+   string            run(string prompt, int timeoutMs = HTTP_TIMEOUT_DEFAULT_MS);      // Process one user turn and return the assistant's final text response
+   bool              hasSession();                                                     // True when an active session exists
+   string            newSession();                                                     // Start a new session and reset history
+   bool              loadSession(string name);                                         // Load a saved session into history
+   void              saveSession();                                                    // Persist the current conversation
+   int               historyCount();                                                   // Number of conversation messages
+   bool              historyMessage(int i, string &role, string &content);             // Read a conversation entry
+   string            runSubAgent(string prompt);                                       // Launch sub-agent on new chart
+   string            collectSubAgentsAndWait();                                        // Wait for all sub-agents
+   string            pollSubAgent(string subAgentId, bool appendToConversation = true);// Collect sub-agent result
+   void              processScheduledTasks();                                          // Execute due scheduled tools
+   string            scheduledTasks();                                                 // List scheduled tasks
+   bool              cancelScheduledTask(uint id);                                     // Cancel a scheduled task
 
 private:
    CJAVal            m_messages;        // persistent conversation history (jtARRAY)
@@ -197,7 +197,7 @@ private:
    Agent             *m_agent; // agent that owns this tool
 
 public:
-   ToolRunSubAgent(Agent *agent) : Tool("run_subagent", "Launch a sub-agent on a separate chart with the given prompt and return its id immediately (it runs in parallel). Launch as many as needed to split a large task (two or more tasks) or quickly get numerous results, then call collect_subagents to retrieve all results.", toolRunSubAgentParams())
+                     ToolRunSubAgent(Agent *agent) : Tool("run_subagent", "Launch a sub-agent on a separate chart with the given prompt and return its id immediately (it runs in parallel). Launch as many as needed to split a large task (two or more tasks) or quickly get numerous results, then call collect_subagents to retrieve all results.", toolRunSubAgentParams())
    {
       m_agent = agent;
    }
@@ -220,7 +220,7 @@ private:
    Agent             *m_agent; // agent that owns this tool
 
 public:
-   ToolCollectSubAgents(Agent *agent) : Tool("collect_subagents", "Wait for all launched sub-agents to finish and return all their results together. Call after launching sub-agents with run_subagent.", NULL)
+                     ToolCollectSubAgents(Agent *agent) : Tool("collect_subagents", "Wait for all launched sub-agents to finish and return all their results together. Call after launching sub-agents with run_subagent.", NULL)
    {
       m_agent = agent;
    }
@@ -322,7 +322,7 @@ void Agent::pushToolResultImage(string toolCallId, string b64data)
 //+------------------------------------------------------------------+
 //| Process one user turn, return the assistant's final text response|
 //+------------------------------------------------------------------+
-string Agent::run(string prompt)
+string Agent::run(string prompt, int timeoutMs)
 {
    if(!m_initialized)
    {
@@ -349,7 +349,7 @@ string Agent::run(string prompt)
       payload["tools"].Set(toolList);
       setThinking(payload);
 
-      string jsonString = requestPost(m_llm.url, m_headers, payload);
+      string jsonString = requestPost(m_llm.url, m_headers, payload, timeoutMs);
       if(jsonString == "")
          return "HTTP request failed.";
 
