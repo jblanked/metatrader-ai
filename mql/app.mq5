@@ -12,7 +12,6 @@
 
 #include "agent.mqh"
 #include "tools/Panel-Draw.mqh"
-#include <VirtualKeys.mqh>
 
 #define CHAT_RENDER_SCALE   1.0
 #define MAX_OBJ_TEXT_CHARS  60
@@ -28,6 +27,7 @@ input bool              inpRunSubAgent  = false;                                
 input string            inpPrompt       = "";                                          // Prompt for sub-agent mode
 input string            inpPromptFile   = "";                                          // Prompt file path
 input string            inpResponseFile = "";                                          // Response file path
+input int               inpHttpTimeout  = 180;                                         // HTTP timeout in seconds
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
 //+------------------------------------------------------------------+
@@ -37,7 +37,7 @@ int OnInit()
    g_prevQuickNavigationKnown = true;
    ChartSetInteger(0, CHART_QUICK_NAVIGATION, false);
 
-   agent = new Agent(inpApiKey, inpProvider, inpModel, inpLocalUrl, inpThinking);
+   appAgent = new Agent(inpApiKey, inpProvider, inpModel, inpLocalUrl, inpThinking);
 
 // Headless: run prompt here
    if(inpRunSubAgent)
@@ -60,14 +60,16 @@ int OnInit()
    panel = new AIPanel("MetaTrader-AI", 0, 0, panelW, panelH, 0);
    if(CheckPointer(panel) != POINTER_DYNAMIC)
    {
-      delete agent;
+      delete appAgent;
+      appAgent = NULL;
       return INIT_FAILED;
    }
-   panel.SetAgent(agent);
+   panel.SetAgent(appAgent);
 
    if(!panel.CreatePanel())
    {
-      delete agent;
+      delete appAgent;
+      appAgent = NULL;
       return INIT_FAILED;
    }
 
@@ -89,8 +91,8 @@ void OnDeinit(const int reason)
       delete panel;
    }
 
-   if(CheckPointer(agent) == POINTER_DYNAMIC)
-      delete agent;
+   if(CheckPointer(appAgent) == POINTER_DYNAMIC)
+      delete appAgent;
 
    ObjectsDeleteAll(0, "MetaTrader-AI");
 }
@@ -144,8 +146,8 @@ void OnTimer()
             return;
          }
 
-         string sessionName = agent.newSession();
-         string response = agent.run(prompt);
+         string sessionName = appAgent.newSession();
+         string response = appAgent.run(prompt, inpHttpTimeout * 1000);
          PrintFormat("[App] Sub-agent response:\n%s", response);
 
          // Write result file for parent
@@ -169,15 +171,15 @@ void OnTimer()
       return;
    }
 
-   if(CheckPointer(agent) == POINTER_DYNAMIC)
-      agent.processScheduledTasks();
+   if(CheckPointer(appAgent) == POINTER_DYNAMIC)
+      appAgent.processScheduledTasks();
 
    panel.OnTickUpdate();
 
    if(panel.IsRequestPending())
    {
       string userMsg = panel.GetPendingMessage();
-      string response = agent.run(userMsg);
+      string response = appAgent.run(userMsg, inpHttpTimeout * 1000);
       panel.CompletePending(response);
    }
 }
@@ -2459,5 +2461,5 @@ bool     g_prevQuickNavigationKnown = false;
 bool     g_subAgentHeadless = false;
 bool     g_subAgentDone = false;
 AIPanel  *panel;
-Agent    *agent;
+Agent    *appAgent;
 //+------------------------------------------------------------------+

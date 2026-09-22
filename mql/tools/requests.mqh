@@ -16,6 +16,7 @@ bool InternetCloseHandle(int);
 bool HttpSendRequestW(int hRequest, string lpszHeaders, int dwHeadersLength, char &lpOptional[], int dwOptionalLength);
 int  InternetConnectW(int hInternet, string lpszServerName, int nServerPort, string lpszUserName, string lpszPassword, int dwService, int dwFlags, int dwContext);
 int  HttpOpenRequestW(int hConnect, string lpszVerb, string lpszObjectName, string lpszVersion, string lpszReferer, string lplpszAcceptTypes, uint dwFlags, int dwContext);
+bool InternetSetOptionW(int, int, int &, int);
 #import
 
 #ifdef __MQL5__
@@ -31,11 +32,15 @@ int  HttpOpenRequestW(int hConnect, string lpszVerb, string lpszObjectName, stri
 #define INTERNET_FLAG_RELOAD         ((uint)0x80000000)
 #define INTERNET_FLAG_NO_CACHE_WRITE ((uint)0x04000000)
 #define HTTP_ADDREQ_FLAG_ADD         0x20000000
+#define INTERNET_OPTION_CONNECT_TIMEOUT 2
+#define INTERNET_OPTION_RECEIVE_TIMEOUT 6
+#define INTERNET_OPTION_SEND_TIMEOUT 5
 
+#define HTTP_TIMEOUT_DEFAULT_MS (1000 * 180)
 //
 #ifdef __MQL5__
-string requestGet(const string url, const string headers);                // send a GET request
-string requestPost(const string url, const string headers, CJAVal &data); // send a POST request
+string requestGet(const string url, const string headers, int timeoutMs = HTTP_TIMEOUT_DEFAULT_MS);                // send a GET request
+string requestPost(const string url, const string headers, CJAVal &data, int timeoutMs = HTTP_TIMEOUT_DEFAULT_MS); // send a POST request
 #endif
 
 //+------------------------------------------------------------------+
@@ -114,7 +119,7 @@ string responseError(const string message)
 //+------------------------------------------------------------------+
 //| Send a GET request                                               |
 //+------------------------------------------------------------------+
-string requestGet(const string url, const string headers)
+string requestGet(const string url, const string headers, int timeoutMs = HTTP_TIMEOUT_DEFAULT_MS)
 {
    char   buffer[1024];
    int    bytesRead = 0;
@@ -127,6 +132,10 @@ string requestGet(const string url, const string headers)
    {
       return responseError(StringFormat("Failed to send GET request: Failed to initialize WinHTTP, Error code: %d", GetLastError()));
    }
+
+   InternetSetOptionW(hInternet, INTERNET_OPTION_CONNECT_TIMEOUT, timeoutMs, sizeof(timeoutMs));
+   InternetSetOptionW(hInternet, INTERNET_OPTION_RECEIVE_TIMEOUT, timeoutMs, sizeof(timeoutMs));
+   InternetSetOptionW(hInternet, INTERNET_OPTION_SEND_TIMEOUT, timeoutMs, sizeof(timeoutMs));
 
    int hUrl = InternetOpenUrlW(hInternet, url, NULL, 0, 0, 0);
    if(!hUrl)
@@ -148,7 +157,7 @@ string requestGet(const string url, const string headers)
 //+------------------------------------------------------------------+
 //| Send a POST request                                              |
 //+------------------------------------------------------------------+
-string requestPost(const string url, const string headers, CJAVal &data)
+string requestPost(const string url, const string headers, CJAVal &data, int timeoutMs = HTTP_TIMEOUT_DEFAULT_MS)
 {
    CJAVal error;
    string result = "";
@@ -176,6 +185,10 @@ string requestPost(const string url, const string headers, CJAVal &data)
    {
       return responseError(StringFormat("Failed to send POST request: Failed to initialize WinHTTP, Error code: %d", GetLastError()));
    }
+
+   InternetSetOptionW(hInternet, INTERNET_OPTION_CONNECT_TIMEOUT, timeoutMs, sizeof(timeoutMs));
+   InternetSetOptionW(hInternet, INTERNET_OPTION_RECEIVE_TIMEOUT, timeoutMs, sizeof(timeoutMs));
+   InternetSetOptionW(hInternet, INTERNET_OPTION_SEND_TIMEOUT, timeoutMs, sizeof(timeoutMs));
 
    int hConnect = InternetConnectW(hInternet, host, port, NULL, NULL, INTERNET_SERVICE_HTTP, 0, 0);
    if(!hConnect)

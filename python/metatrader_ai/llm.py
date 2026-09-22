@@ -21,7 +21,7 @@ class LLM:
         elif provider_id == DEEPSEEK:
             self.id = "deepseek"
             self.label = "DeepSeek"
-            self.model = "deepseek-v4-flash"
+            self.model = "deepseek-flash"
             self.url = "https://api.deepseek.com/chat/completions"
         elif provider_id == ANTHROPIC:
             self.id = "anthropic"
