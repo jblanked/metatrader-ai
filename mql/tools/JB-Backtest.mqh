@@ -354,8 +354,7 @@ string            CBacktest::getExpertName(bool withExtension)
    }
    if(slash == -1)
    {
-      Alert("Failed to find last slash!");
-      return "";
+      return withExtension ? path : StringSubstr(path, 0, StringFind(path, ".ex5"));
    }
 
    string ex5 = StringSubstr(path, slash + 1);
