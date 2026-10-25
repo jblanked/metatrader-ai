@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2026,JBlanked LLC"
 #property link      "https://www.jblanked.com"
-#property version   "1.11"
+#property version   "1.12"
 #property description "MetaTrader-AI: AI trading assistant for MetaTrader 5"
 #property description "Last updated: October 24th, 2026"
 #property strict
