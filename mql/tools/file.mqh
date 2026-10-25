@@ -354,8 +354,7 @@ string getFileNameFromPath(const string path)
    }
    if(slash == -1)
    {
-      Print("Failed to find last slash!");
-      return "";
+      return path;
    }
    return StringSubstr(path, slash + 1);
 }

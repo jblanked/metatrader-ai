@@ -24,13 +24,13 @@ enum ENUM_LLM_MODEL
    LLM_MODEL_OPENAI_GPT_5_4_MINI  = 1,  // gpt-5.4-mini
    LLM_MODEL_OPENAI_GPT_5_4       = 2,  // gpt-5.4
    LLM_MODEL_OPENAI_GPT_5_5       = 3,  // gpt-5.5
-   LLM_MODEL_OPENAI_GPT_5_6_LUNA  = 4,  // gpt-5.6-luna
+   LLM_MODEL_OPENAI_GPT_6_LUNA    = 4,  // gpt-6-luna
    LLM_MODEL_OPENAI_GPT_5_6_TERRA = 5,  // gpt-5.6-terra
    LLM_MODEL_OPENAI_GPT_5_6_SOL   = 6,  // gpt-5.6-sol
-   LLM_MODEL_ANTHROPIC_SONNET_4_6 = 7,  // claude-sonnet-4-6
-   LLM_MODEL_ANTHROPIC_SONNET_5   = 8,  // claude-sonnet-5
-   LLM_MODEL_ANTHROPIC_OPUS_4_8   = 9,  // claude-opus-4-8
-   LLM_MODEL_ANTHROPIC_OPUS_5     = 10, // claude-opus-5
+   LLM_MODEL_ANTHROPIC_SONNET_5   = 7,  // claude-sonnet-5
+   LLM_MODEL_ANTHROPIC_SONNET_5_5 = 8,  // claude-sonnet-5-5
+   LLM_MODEL_ANTHROPIC_OPUS_5     = 9,  // claude-opus-5
+   LLM_MODEL_ANTHROPIC_OPUS_5_5   = 10, // claude-opus-5-5
    LLM_MODEL_ANTHROPIC_FABLE_5_1  = 11, // claude-fable-5-1
    LLM_MODEL_ANTHROPIC_HAIKU_4_5  = 12, // claude-haiku-4-5-20251001
    LLM_MODEL_DEEPSEEK_V4_FLASH    = 13, // deepseek-flash
@@ -127,8 +127,8 @@ LLM::LLM(const ENUM_LLM_PROVIDER providerId, const int providerModel, const stri
    case LLM_MODEL_OPENAI_GPT_5_5:
       model = "gpt-5.5";
       break;
-   case LLM_MODEL_OPENAI_GPT_5_6_LUNA:
-      model = "gpt-5.6-luna";
+   case LLM_MODEL_OPENAI_GPT_6_LUNA:
+      model = "gpt-6-luna";
       break;
    case LLM_MODEL_OPENAI_GPT_5_6_TERRA:
       model = "gpt-5.6-terra";
@@ -136,17 +136,17 @@ LLM::LLM(const ENUM_LLM_PROVIDER providerId, const int providerModel, const stri
    case LLM_MODEL_OPENAI_GPT_5_6_SOL:
       model = "gpt-5.6-sol";
       break;
-   case LLM_MODEL_ANTHROPIC_SONNET_4_6:
-      model = "claude-sonnet-4-6";
-      break;
    case LLM_MODEL_ANTHROPIC_SONNET_5:
       model = "claude-sonnet-5";
       break;
-   case LLM_MODEL_ANTHROPIC_OPUS_4_8:
-      model = "claude-opus-4-8";
+   case LLM_MODEL_ANTHROPIC_SONNET_5_5:
+      model = "claude-sonnet-5-5";
       break;
    case LLM_MODEL_ANTHROPIC_OPUS_5:
       model = "claude-opus-5";
+      break;
+   case LLM_MODEL_ANTHROPIC_OPUS_5_5:
+      model = "claude-opus-5-5";
       break;
    case LLM_MODEL_ANTHROPIC_FABLE_5_1:
       model = "claude-fable-5-1";
